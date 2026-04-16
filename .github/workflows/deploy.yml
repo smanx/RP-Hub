@@ -57,10 +57,10 @@ jobs:
           echo '  "start_url": "./",' >> build/manifest.json
           echo '  "display": "standalone",' >> build/manifest.json
           echo '  "background_color": "#f9fafb",' >> build/manifest.json
-          echo '  "theme_color": "#3b82f6",' >> build/manifest.json
+          echo '  "theme_color": "#1f2937",' >> build/manifest.json
           echo '  "icons": [' >> build/manifest.json
           echo '    {' >> build/manifest.json
-          echo '      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6",' >> build/manifest.json
+          echo '      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937",' >> build/manifest.json
           echo '      "sizes": "512x512",' >> build/manifest.json
           echo '      "type": "image/svg+xml",' >> build/manifest.json
           echo '      "purpose": "any"' >> build/manifest.json
@@ -100,8 +100,8 @@ jobs:
             # Create temporary files
             cp build/index.html build/temp.html
             
-            # Add manifest and theme color using relative paths
-            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#3b82f6"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6">|' build/temp.html
+            # Add manifest, theme color, and iOS immersive status bar tags using relative paths
+            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937">|' build/temp.html
             
             # Add service worker before </body> using relative path
             awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
