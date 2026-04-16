@@ -54,7 +54,7 @@ jobs:
           echo '  "name": "Roleplay Hub",' >> build/manifest.json
           echo '  "short_name": "RP Hub",' >> build/manifest.json
           echo '  "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",' >> build/manifest.json
-          echo '  "start_url": "/",' >> build/manifest.json
+          echo '  "start_url": "./",' >> build/manifest.json
           echo '  "display": "standalone",' >> build/manifest.json
           echo '  "background_color": "#f9fafb",' >> build/manifest.json
           echo '  "theme_color": "#3b82f6",' >> build/manifest.json
@@ -72,12 +72,12 @@ jobs:
         run: |
           echo "const CACHE_NAME = 'rp-hub-v1';" > build/sw.js
           echo "const urlsToCache = [" >> build/sw.js
-          echo "  '/'," >> build/sw.js
-          echo "  '/index.html'," >> build/sw.js
-          echo "  '/character/index.html'," >> build/sw.js
-          echo "  '/assets/css/styles.css'," >> build/sw.js
-          echo "  '/assets/js/app.js'," >> build/sw.js
-          echo "  '/assets/js/utils.js'" >> build/sw.js
+          echo "  './'," >> build/sw.js
+          echo "  './index.html'," >> build/sw.js
+          echo "  './character/index.html'," >> build/sw.js
+          echo "  './assets/css/styles.css'," >> build/sw.js
+          echo "  './assets/js/app.js'," >> build/sw.js
+          echo "  './assets/js/utils.js'" >> build/sw.js
           echo "];" >> build/sw.js
           echo "" >> build/sw.js
           echo "self.addEventListener('install', (event) => {" >> build/sw.js
@@ -100,11 +100,11 @@ jobs:
             # Create temporary files
             cp build/index.html build/temp.html
             
-            # Add manifest and theme color
-            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#3b82f6"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6">|' build/temp.html
+            # Add manifest and theme color using relative paths
+            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#3b82f6"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6">|' build/temp.html
             
-            # Add service worker before </body>
-            awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"/sw.js\")}</script>"}1' build/temp.html > build/index.html
+            # Add service worker before </body> using relative path
+            awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
             
             # Clean up
             rm build/temp.html
