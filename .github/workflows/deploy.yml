@@ -50,87 +50,64 @@ jobs:
 
       - name: Generate PWA manifest
         run: |
-          cat > build/manifest.json << 'EOF'
-          {
-            "name": "Roleplay Hub",
-            "short_name": "RP Hub",
-            "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",
-            "start_url": "/",
-            "display": "standalone",
-            "background_color": "#f9fafb",
-            "theme_color": "#3b82f6",
-            "icons": [
-              {
-                "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6",
-                "sizes": "512x512",
-                "type": "image/svg+xml",
-                "purpose": "any"
-              }
-            ]
-          }
-          EOF
+          echo '{' > build/manifest.json
+          echo '  "name": "Roleplay Hub",' >> build/manifest.json
+          echo '  "short_name": "RP Hub",' >> build/manifest.json
+          echo '  "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",' >> build/manifest.json
+          echo '  "start_url": "/",' >> build/manifest.json
+          echo '  "display": "standalone",' >> build/manifest.json
+          echo '  "background_color": "#f9fafb",' >> build/manifest.json
+          echo '  "theme_color": "#3b82f6",' >> build/manifest.json
+          echo '  "icons": [' >> build/manifest.json
+          echo '    {' >> build/manifest.json
+          echo '      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6",' >> build/manifest.json
+          echo '      "sizes": "512x512",' >> build/manifest.json
+          echo '      "type": "image/svg+xml",' >> build/manifest.json
+          echo '      "purpose": "any"' >> build/manifest.json
+          echo '    }' >> build/manifest.json
+          echo '  ]' >> build/manifest.json
+          echo '}' >> build/manifest.json
 
       - name: Generate Service Worker
         run: |
-          cat > build/sw.js << 'EOF'
-          const CACHE_NAME = 'rp-hub-v1';
-          const urlsToCache = [
-            '/',
-            '/index.html',
-            '/character/index.html',
-            '/assets/css/styles.css',
-            '/assets/js/app.js',
-            '/assets/js/utils.js'
-          ];
+          echo "const CACHE_NAME = 'rp-hub-v1';" > build/sw.js
+          echo "const urlsToCache = [" >> build/sw.js
+          echo "  '/'," >> build/sw.js
+          echo "  '/index.html'," >> build/sw.js
+          echo "  '/character/index.html'," >> build/sw.js
+          echo "  '/assets/css/styles.css'," >> build/sw.js
+          echo "  '/assets/js/app.js'," >> build/sw.js
+          echo "  '/assets/js/utils.js'" >> build/sw.js
+          echo "];" >> build/sw.js
+          echo "" >> build/sw.js
+          echo "self.addEventListener('install', (event) => {" >> build/sw.js
+          echo "  event.waitUntil(" >> build/sw.js
+          echo "    caches.open(CACHE_NAME)" >> build/sw.js
+          echo "      .then((cache) => cache.addAll(urlsToCache))" >> build/sw.js
+          echo "  );" >> build/sw.js
+          echo "});" >> build/sw.js
+          echo "" >> build/sw.js
+          echo "self.addEventListener('fetch', (event) => {" >> build/sw.js
+          echo "  event.respondWith(" >> build/sw.js
+          echo "    caches.match(event.request)" >> build/sw.js
+          echo "      .then((response) => response || fetch(event.request))" >> build/sw.js
+          echo "  );" >> build/sw.js
+          echo "});" >> build/sw.js
 
-          self.addEventListener('install', (event) => {
-            event.waitUntil(
-              caches.open(CACHE_NAME)
-                .then((cache) => cache.addAll(urlsToCache))
-            );
-          });
-
-          self.addEventListener('fetch', (event) => {
-            event.respondWith(
-              caches.match(event.request)
-                .then((response) => response || fetch(event.request))
-            );
-          });
-          EOF
-
-      - name: Update index.html to add PWA support
+      - name: Update index.html with PWA
         run: |
           if [ -f build/index.html ]; then
-            python3 << 'PYTHON'
-            with open('build/index.html', 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Create temporary files
+            cp build/index.html build/temp.html
             
-            # 添加manifest和相关标签
-            if '<link rel="manifest"' not in content:
-                content = content.replace(
-                    '<title>Roleplay Hub</title>',
-                    '''<title>Roleplay Hub</title>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#3b82f6">
-    <link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6">'''
-                )
+            # Add manifest and theme color
+            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#3b82f6"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=3b82f6">|' build/temp.html
             
-            # 添加service worker脚本
-            if 'serviceWorker' not in content:
-                content = content.replace(
-                    '</body>',
-                    '''<script>
-        if('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js');
-        }
-      </script>
-</body>'''
-                )
+            # Add service worker before </body>
+            awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"/sw.js\")}</script>"}1' build/temp.html > build/index.html
             
-            with open('build/index.html', 'w', encoding='utf-8') as f:
-                f.write(content)
-            print('Updated index.html with PWA support')
-PYTHON
+            # Clean up
+            rm build/temp.html
           fi
 
       - name: Setup Pages
