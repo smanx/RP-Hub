@@ -180,8 +180,8 @@ jobs:
           # 更新 index.html 添加 PWA 标签
           cp build/index.html build/temp.html
           sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" build/temp.html
-          awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
-          rm build/temp.html
+          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script>\n</body>|g' build/temp.html
+          mv build/temp.html build/index.html
           
           echo "Build completed"
 
