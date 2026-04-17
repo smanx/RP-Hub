@@ -45,8 +45,94 @@ jobs:
 
       - name: Prepare build directory
         run: |
-          mkdir -p build
+          mkdir -p build/libs
           cp -r index.html character assets build/
+
+      - name: Download remote CDN resources
+        run: |
+          cd build
+          
+          # Download Tailwind CSS
+          curl -sL "https://cdn.tailwindcss.com" -o libs/tailwindcss.js
+          
+          # Download Vue 3
+          curl -sL "https://unpkg.com/vue@3/dist/vue.global.prod.js" -o libs/vue.js
+          
+          # Download Marked
+          curl -sL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o libs/marked.js
+          
+          # Download DOMPurify
+          curl -sL "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js" -o libs/purify.js
+          
+          # Download SortableJS
+          curl -sL "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js" -o libs/sortable.js
+          
+          echo "Downloaded all CDN resources"
+
+      - name: Replace remote URLs in index.html
+        run: |
+          cd build
+          
+          # Create a Python script to update HTML
+          cat > update_html.py << 'PYEOF'
+          import re
+          import os
+
+          # Read index.html
+          with open('index.html', 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Replace CDN URLs with local paths
+          replacements = [
+              ('https://cdn.tailwindcss.com', './libs/tailwindcss.js'),
+              ('https://unpkg.com/vue@3/dist/vue.global.prod.js', './libs/vue.js'),
+              ('https://cdn.jsdelivr.net/npm/marked/marked.min.js', './libs/marked.js'),
+              ('https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', './libs/purify.js'),
+              ('https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js', './libs/sortable.js'),
+          ]
+
+          for old_url, new_path in replacements:
+              content = content.replace(f'src="{old_url}"', f'src="{new_path}"')
+
+          # Write back
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write(content)
+
+          print("Replaced CDN URLs with local paths")
+          PYEOF
+          
+          python3 update_html.py
+          rm update_html.py
+
+      - name: Replace remote URLs in character/index.html
+        run: |
+          if [ -f build/character/index.html ]; then
+            cd build
+            cat > update_char_html.py << 'PYEOF'
+            import re
+            import os
+
+            with open('character/index.html', 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            replacements = [
+                ('https://cdn.tailwindcss.com', '../libs/tailwindcss.js'),
+                ('https://unpkg.com/vue@3/dist/vue.global.prod.js', '../libs/vue.js'),
+                ('https://cdn.jsdelivr.net/npm/marked/marked.min.js', '../libs/marked.js'),
+                ('https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', '../libs/purify.js'),
+                ('https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js', '../libs/sortable.js'),
+            ]
+
+            for old_url, new_path in replacements:
+                content = content.replace(f'src="{old_url}"', f'src="{new_path}"')
+
+            with open('character/index.html', 'w', encoding='utf-8') as f:
+                f.write(content)
+            print("Replaced CDN URLs in character/index.html")
+            PYEOF
+            python3 update_char_html.py
+            rm update_char_html.py
+          fi
 
       - name: Generate PWA manifest
         run: |
@@ -68,7 +154,7 @@ jobs:
           echo '  ]' >> build/manifest.json
           echo '}' >> build/manifest.json
 
-      - name: Generate Service Worker
+      - name: Generate Service Worker with local libs
         run: |
           echo "const CACHE_NAME = 'rp-hub-v1';" > build/sw.js
           echo "const urlsToCache = [" >> build/sw.js
@@ -77,7 +163,12 @@ jobs:
           echo "  './character/index.html'," >> build/sw.js
           echo "  './assets/css/styles.css'," >> build/sw.js
           echo "  './assets/js/app.js'," >> build/sw.js
-          echo "  './assets/js/utils.js'" >> build/sw.js
+          echo "  './assets/js/utils.js'," >> build/sw.js
+          echo "  './libs/tailwindcss.js'," >> build/sw.js
+          echo "  './libs/vue.js'," >> build/sw.js
+          echo "  './libs/marked.js'," >> build/sw.js
+          echo "  './libs/purify.js'," >> build/sw.js
+          echo "  './libs/sortable.js'" >> build/sw.js
           echo "];" >> build/sw.js
           echo "" >> build/sw.js
           echo "self.addEventListener('install', (event) => {" >> build/sw.js
@@ -97,16 +188,12 @@ jobs:
       - name: Update index.html with PWA
         run: |
           if [ -f build/index.html ]; then
-            # Create temporary files
             cp build/index.html build/temp.html
             
-            # Add manifest, theme color, and iOS immersive status bar tags using relative paths
             sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937">|' build/temp.html
             
-            # Add service worker before </body> using relative path
             awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
             
-            # Clean up
             rm build/temp.html
           fi
 
