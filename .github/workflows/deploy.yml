@@ -26,12 +26,14 @@ jobs:
 
       - name: Sync upstream repository
         run: |
-          git remote add upstream https://github.com/STA1N156/RP-Hub.git || true
-          git fetch upstream main
-          git merge upstream/main --allow-unrelated-histories -X theirs || true
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "Sync with upstream" || true
+          git remote add upstream https://github.com/STA1N156/RP-Hub.git || true
+          git fetch upstream main
+          if ! git merge upstream/main --allow-unrelated-histories --no-edit; then
+            git merge --abort || true
+            git rebase upstream/main || true
+          fi
           git push || true
 
   build:
