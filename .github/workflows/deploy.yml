@@ -49,11 +49,11 @@ jobs:
         run: |
           # CDN 资源配置 - 使用 | 作为分隔符避免和 URL 中的冒号冲突
           declare -a CDNS=(
-            "tailwindcss|https://cdn.tailwindcss.com|./libs/tailwindcss.js"
-            "vue|https://unpkg.com/vue@3/dist/vue.global.prod.js|./libs/vue.js"
-            "marked|https://cdn.jsdelivr.net/npm/marked/marked.min.js|./libs/marked.js"
+            "tailwindcss|https://cdn.tailwindcss.com/3.4.1|./libs/tailwindcss.js"
+            "vue|https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js|./libs/vue.js"
+            "marked|https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js|./libs/marked.js"
             "dompurify|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|./libs/purify.js"
-            "sortable|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|./libs/sortable.js"
+            "sortable|https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js|./libs/sortable.js"
           )
           
           # PWA 配置
@@ -120,7 +120,7 @@ jobs:
             '$local_path',"
           done
           
-          # 生成 Service Worker
+          # 生成 Service Worker - 修复不缓存 chrome-extension
           cat > build/sw.js << SWEOF
           const CACHE_NAME = 'rp-hub-v1';
           const urlsToCache = [
@@ -155,6 +155,13 @@ jobs:
           });
 
           self.addEventListener('fetch', (event) => {
+            const requestUrl = new URL(event.request.url);
+            
+            // 跳过 chrome-extension 和其他非 http/https 请求
+            if (!requestUrl.protocol.startsWith('http')) {
+              return;
+            }
+            
             event.respondWith(
               caches.match(event.request, { ignoreSearch: true })
                 .then((response) => {
@@ -179,23 +186,76 @@ jobs:
           });
           SWEOF
           
-          # 更新 index.html - 使用简单的 sed 替换
-          # 先把所有内容读出来，去掉时间戳脚本
+          # 用 Python 处理 HTML 更可靠
+          cat > build/process_html.py << 'PYEOF'
+          import re
+          import os
+          
+          # 读取原始文件
+          with open('index.html', 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          # 1. 移除 styles.css 的时间戳
+          content = re.sub(
+              r'<script>\s*document\.write\(\'<link rel="stylesheet" href="assets/css/styles\.css\?v=[^>]+\'\);\s*</script>',
+              '<link rel="stylesheet" href="assets/css/styles.css">',
+              content
+          )
+          
+          # 2. 移除 utils.js 和 app.js 的时间戳
+          content = re.sub(
+              r'<script>\s*document\.write\(\'<script src="assets/js/utils\.js\?v=[^>]+</script>\'\);\s*document\.write\(\'<script src="assets/js/app\.js\?v=[^>]+</script>\'\);\s*</script>',
+              '<script src="assets/js/utils.js"></script>\n    <script src="assets/js/app.js"></script>',
+              content
+          )
+          
+          # 3. 添加 PWA 标签
+          pwa_tags = f'''<link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="{os.environ.get('PWA_THEME_COLOR', '#1f2937')}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="{os.environ.get('PWA_ICON_URL', '')}">'''
+          
+          content = content.replace('</title>', '</title>\n    ' + pwa_tags.replace('\n', '\n    '))
+          
+          # 4. 添加 Service Worker 注册
+          sw_code = '''    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("./sw.js");
+        }
+    </script>
+</body>'''
+          content = content.replace('</body>', sw_code)
+          
+          # 替换 CDN URL
+          cdns_env = os.environ.get('CDNS_LIST', '')
+          if cdns_env:
+              for item in cdns_env.split('||'):
+                  if item:
+                      name, remote_url, local_path = item.split('|')
+                      content = content.replace(remote_url, local_path)
+          
+          # 写入
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write(content)
+          
+          print('HTML processed successfully')
+          PYEOF
+          
+          # 设置环境变量并运行
           cd build
-          awk '
-            /document.write.*styles.css/ { print "<link rel=\"stylesheet\" href=\"assets/css/styles.css\">"; next }
-            /document.write.*utils.js/ { print "    <script src=\"assets/js/utils.js\"></script>"; next }
-            /document.write.*app.js/ { print "    <script src=\"assets/js/app.js\"></script>"; next }
-            { print }
-          ' index.html > temp.html
+          export PWA_THEME_COLOR="$PWA_THEME_COLOR"
+          export PWA_ICON_URL="$PWA_ICON_URL"
           
-          # 添加 PWA 标签
-          sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" temp.html
+          # 构建 CDNS 列表
+          CDNS_LIST=""
+          for cdn in "${CDNS[@]}"; do
+              CDNS_LIST="$CDNS_LIST$cdn||"
+          done
+          export CDNS_LIST="$CDNS_LIST"
           
-          # 添加 Service Worker 注册
-          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script>\n</body>|' temp.html
-          
-          mv temp.html index.html
+          python3 process_html.py
+          rm process_html.py
           cd ..
           
           echo "Build completed"
