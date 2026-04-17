@@ -45,6 +45,28 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Create config file
+        run: |
+          cat > config.sh << 'CONFIGEOF'
+          # CDN 资源列表：名称、远程URL、本地路径
+          declare -a CDNS=(
+            "tailwindcss:https://cdn.tailwindcss.com:./libs/tailwindcss.js"
+            "vue:https://unpkg.com/vue@3/dist/vue.global.prod.js:./libs/vue.js"
+            "marked:https://cdn.jsdelivr.net/npm/marked/marked.min.js:./libs/marked.js"
+            "dompurify:https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js:./libs/purify.js"
+            "sortable:https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js:./libs/sortable.js"
+          )
+          
+          # PWA 配置
+          PWA_NAME="Roleplay Hub"
+          PWA_SHORT_NAME="RP Hub"
+          PWA_THEME_COLOR="#1f2937"
+          PWA_BG_COLOR="#f9fafb"
+          PWA_ICON_URL="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937"
+          CONFIGEOF
+          
+          cat config.sh
+
       - name: Prepare build directory
         run: |
           mkdir -p build/libs
@@ -52,99 +74,146 @@ jobs:
 
       - name: Download remote CDN resources
         run: |
-          cd build
+          source config.sh
           
-          curl -sL "https://cdn.tailwindcss.com" -o libs/tailwindcss.js
-          curl -sL "https://unpkg.com/vue@3/dist/vue.global.prod.js" -o libs/vue.js
-          curl -sL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o libs/marked.js
-          curl -sL "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js" -o libs/purify.js
-          curl -sL "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js" -o libs/sortable.js
+          for cdn in "${CDNS[@]}"; do
+            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            curl -sL "$remote_url" -o "build/$local_path"
+            echo "Downloaded $name"
+          done
           
           echo "Downloaded all CDN resources"
 
       - name: Replace CDN URLs in index.html
         run: |
+          source config.sh
+          
           cd build
           
-          sed -i 's|https://cdn.tailwindcss.com|./libs/tailwindcss.js|g' index.html
-          sed -i 's|https://unpkg.com/vue@3/dist/vue.global.prod.js|./libs/vue.js|g' index.html
-          sed -i 's|https://cdn.jsdelivr.net/npm/marked/marked.min.js|./libs/marked.js|g' index.html
-          sed -i 's|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|./libs/purify.js|g' index.html
-          sed -i 's|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|./libs/sortable.js|g' index.html
+          for cdn in "${CDNS[@]}"; do
+            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            sed -i "s|$remote_url|$local_path|g" index.html
+          done
           
           echo "Replaced CDN URLs in index.html"
 
       - name: Replace CDN URLs in character/index.html
         run: |
+          source config.sh
+          
           if [ -f build/character/index.html ]; then
             cd build
             
-            sed -i 's|https://cdn.tailwindcss.com|../libs/tailwindcss.js|g' character/index.html
-            sed -i 's|https://unpkg.com/vue@3/dist/vue.global.prod.js|../libs/vue.js|g' character/index.html
-            sed -i 's|https://cdn.jsdelivr.net/npm/marked/marked.min.js|../libs/marked.js|g' character/index.html
-            sed -i 's|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|../libs/purify.js|g' character/index.html
-            sed -i 's|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|../libs/sortable.js|g' character/index.html
+            for cdn in "${CDNS[@]}"; do
+              IFS=':' read -r name remote_url local_path <<< "$cdn"
+              # 相对路径需要 ../ 前缀
+              local_rel_path="${local_path/.\//../}"
+              sed -i "s|$remote_url|$local_rel_path|g" character/index.html
+            done
             
             echo "Replaced CDN URLs in character/index.html"
           fi
 
       - name: Generate PWA manifest
         run: |
-          echo '{' > build/manifest.json
-          echo '  "name": "Roleplay Hub",' >> build/manifest.json
-          echo '  "short_name": "RP Hub",' >> build/manifest.json
-          echo '  "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",' >> build/manifest.json
-          echo '  "start_url": "./",' >> build/manifest.json
-          echo '  "display": "standalone",' >> build/manifest.json
-          echo '  "background_color": "#f9fafb",' >> build/manifest.json
-          echo '  "theme_color": "#1f2937",' >> build/manifest.json
-          echo '  "icons": [' >> build/manifest.json
-          echo '    {' >> build/manifest.json
-          echo '      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937",' >> build/manifest.json
-          echo '      "sizes": "512x512",' >> build/manifest.json
-          echo '      "type": "image/svg+xml",' >> build/manifest.json
-          echo '      "purpose": "any"' >> build/manifest.json
-          echo '    }' >> build/manifest.json
-          echo '  ]' >> build/manifest.json
-          echo '}' >> build/manifest.json
+          source config.sh
+          
+          cat > build/manifest.json << MANIFESTEOF
+          {
+            "name": "$PWA_NAME",
+            "short_name": "$PWA_SHORT_NAME",
+            "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",
+            "start_url": "./",
+            "display": "standalone",
+            "background_color": "$PWA_BG_COLOR",
+            "theme_color": "$PWA_THEME_COLOR",
+            "icons": [
+              {
+                "src": "$PWA_ICON_URL",
+                "sizes": "512x512",
+                "type": "image/svg+xml",
+                "purpose": "any"
+              }
+            ]
+          }
+          MANIFESTEOF
 
-      - name: Generate Service Worker with local libs
+      - name: Generate Service Worker
         run: |
-          echo "const CACHE_NAME = 'rp-hub-v1';" > build/sw.js
-          echo "const urlsToCache = [" >> build/sw.js
-          echo "  './'," >> build/sw.js
-          echo "  './index.html'," >> build/sw.js
-          echo "  './character/index.html'," >> build/sw.js
-          echo "  './assets/css/styles.css'," >> build/sw.js
-          echo "  './assets/js/app.js'," >> build/sw.js
-          echo "  './assets/js/utils.js'," >> build/sw.js
-          echo "  './libs/tailwindcss.js'," >> build/sw.js
-          echo "  './libs/vue.js'," >> build/sw.js
-          echo "  './libs/marked.js'," >> build/sw.js
-          echo "  './libs/purify.js'," >> build/sw.js
-          echo "  './libs/sortable.js'" >> build/sw.js
-          echo "];" >> build/sw.js
-          echo "" >> build/sw.js
-          echo "self.addEventListener('install', (event) => {" >> build/sw.js
-          echo "  event.waitUntil(" >> build/sw.js
-          echo "    caches.open(CACHE_NAME)" >> build/sw.js
-          echo "      .then((cache) => cache.addAll(urlsToCache))" >> build/sw.js
-          echo "  );" >> build/sw.js
-          echo "});" >> build/sw.js
-          echo "" >> build/sw.js
-          echo "self.addEventListener('fetch', (event) => {" >> build/sw.js
-          echo "  event.respondWith(" >> build/sw.js
-          echo "    caches.match(event.request)" >> build/sw.js
-          echo "      .then((response) => response || fetch(event.request))" >> build/sw.js
-          echo "  );" >> build/sw.js
-          echo "});" >> build/sw.js
+          source config.sh
+          
+          # 构建缓存列表
+          cache_list=""
+          for cdn in "${CDNS[@]}"; do
+            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            cache_list="$cache_list
+            '$local_path',"
+          done
+          
+          cat > build/sw.js << SWEOF
+          const CACHE_NAME = 'rp-hub-v1';
+          const urlsToCache = [
+            './',
+            './index.html',
+            './character/index.html',
+            './assets/css/styles.css',
+            './assets/js/app.js',
+            './assets/js/utils.js',$cache_list
+            './manifest.json'
+          ];
+
+          self.addEventListener('install', (event) => {
+            event.waitUntil(
+              caches.open(CACHE_NAME)
+                .then((cache) => cache.addAll(urlsToCache))
+            );
+          });
+
+          self.addEventListener('activate', (event) => {
+            event.waitUntil(
+              caches.keys().then((cacheNames) => {
+                return Promise.all(
+                  cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME) {
+                      return caches.delete(cacheName);
+                    }
+                  })
+                );
+              })
+            );
+          });
+
+          self.addEventListener('fetch', (event) => {
+            event.respondWith(
+              caches.match(event.request)
+                .then((response) => {
+                  if (response) {
+                    return response;
+                  }
+                  return fetch(event.request).then((response) => {
+                    if (!response || response.status !== 200 || response.type !== 'basic') {
+                      return response;
+                    }
+                    let responseToCache = response.clone();
+                    caches.open(CACHE_NAME)
+                      .then((cache) => {
+                        cache.put(event.request, responseToCache);
+                      });
+                    return response;
+                  });
+                })
+            );
+          });
+          SWEOF
 
       - name: Update index.html with PWA
         run: |
+          source config.sh
+          
           if [ -f build/index.html ]; then
             cp build/index.html build/temp.html
             
-            sed -i 's|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937">|' build/temp.html
+            sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" build/temp.html
             
             awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
             
