@@ -179,15 +179,24 @@ jobs:
           });
           SWEOF
           
-          # 更新 index.html 添加 PWA 标签并移除时间戳
-          cp build/index.html build/temp.html
-          sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" build/temp.html
-          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script>\n</body>|g' build/temp.html
-          # 移除动态添加时间戳的代码，替换为普通 link/script 标签
-          sed -i "s|    <script>.*document.write.*styles.css.*</script>|<link rel=\"stylesheet\" href=\"assets/css/styles.css\">|" build/temp.html
-          sed -i "s|        document.write.*utils.js.*</script>|        <script src=\"assets/js/utils.js\"></script>|" build/temp.html
-          sed -i "s|        document.write.*app.js.*</script>|        <script src=\"assets/js/app.js\"></script>|" build/temp.html
-          mv build/temp.html build/index.html
+          # 更新 index.html - 使用简单的 sed 替换
+          # 先把所有内容读出来，去掉时间戳脚本
+          cd build
+          awk '
+            /document.write.*styles.css/ { print "<link rel=\"stylesheet\" href=\"assets/css/styles.css\">"; next }
+            /document.write.*utils.js/ { print "    <script src=\"assets/js/utils.js\"></script>"; next }
+            /document.write.*app.js/ { print "    <script src=\"assets/js/app.js\"></script>"; next }
+            { print }
+          ' index.html > temp.html
+          
+          # 添加 PWA 标签
+          sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" temp.html
+          
+          # 添加 Service Worker 注册
+          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script>\n</body>|' temp.html
+          
+          mv temp.html index.html
+          cd ..
           
           echo "Build completed"
 
