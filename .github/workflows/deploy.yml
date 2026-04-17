@@ -108,9 +108,12 @@ jobs:
 
           self.addEventListener('fetch', (event) => {
             const requestUrl = new URL(event.request.url);
+            
+            // 只处理 http/https 请求
             if (!requestUrl.protocol.startsWith('http')) {
               return;
             }
+            
             event.respondWith(
               caches.match(event.request, { ignoreSearch: true })
                 .then((response) => {
@@ -121,14 +124,19 @@ jobs:
                     if (!response || response.status !== 200 || response.type !== 'basic') {
                       return response;
                     }
-                    let responseToCache = response.clone();
-                    caches.open(CACHE_NAME)
-                      .then((cache) => {
-                        let url = new URL(event.request.url);
-                        url.search = '';
-                        cache.put(url.toString(), responseToCache);
-                      });
+                    // 只缓存同域资源
+                    if (requestUrl.origin === location.origin) {
+                      let responseToCache = response.clone();
+                      caches.open(CACHE_NAME)
+                        .then((cache) => {
+                          let url = new URL(event.request.url);
+                          url.search = '';
+                          cache.put(url.toString(), responseToCache).catch(() => {});
+                        });
+                    }
                     return response;
+                  }).catch(() => {
+                    return caches.match(event.request, { ignoreSearch: true });
                   });
                 })
             );
