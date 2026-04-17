@@ -47,13 +47,13 @@ jobs:
 
       - name: Build and generate PWA
         run: |
-          # CDN 资源配置
+          # CDN 资源配置 - 使用 | 作为分隔符避免和 URL 中的冒号冲突
           declare -a CDNS=(
-            "tailwindcss:https://cdn.tailwindcss.com:./libs/tailwindcss.js"
-            "vue:https://unpkg.com/vue@3/dist/vue.global.prod.js:./libs/vue.js"
-            "marked:https://cdn.jsdelivr.net/npm/marked/marked.min.js:./libs/marked.js"
-            "dompurify:https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js:./libs/purify.js"
-            "sortable:https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js:./libs/sortable.js"
+            "tailwindcss|https://cdn.tailwindcss.com|./libs/tailwindcss.js"
+            "vue|https://unpkg.com/vue@3/dist/vue.global.prod.js|./libs/vue.js"
+            "marked|https://cdn.jsdelivr.net/npm/marked/marked.min.js|./libs/marked.js"
+            "dompurify|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|./libs/purify.js"
+            "sortable|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|./libs/sortable.js"
           )
           
           # PWA 配置
@@ -69,7 +69,7 @@ jobs:
           
           # 下载 CDN 资源
           for cdn in "${CDNS[@]}"; do
-            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            IFS='|' read -r name remote_url local_path <<< "$cdn"
             curl -sL "$remote_url" -o "build/$local_path"
             echo "Downloaded $name"
           done
@@ -77,14 +77,14 @@ jobs:
           # 替换 index.html 中的 CDN URL
           cd build
           for cdn in "${CDNS[@]}"; do
-            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            IFS='|' read -r name remote_url local_path <<< "$cdn"
             sed -i "s|$remote_url|$local_path|g" index.html
           done
           
           # 替换 character/index.html 中的 CDN URL
           if [ -f character/index.html ]; then
             for cdn in "${CDNS[@]}"; do
-              IFS=':' read -r name remote_url local_path <<< "$cdn"
+              IFS='|' read -r name remote_url local_path <<< "$cdn"
               local_rel_path="${local_path/.\//../}"
               sed -i "s|$remote_url|$local_rel_path|g" character/index.html
             done
@@ -115,7 +115,7 @@ jobs:
           # 构建缓存列表
           cache_list=""
           for cdn in "${CDNS[@]}"; do
-            IFS=':' read -r name remote_url local_path <<< "$cdn"
+            IFS='|' read -r name remote_url local_path <<< "$cdn"
             cache_list="$cache_list
             '$local_path',"
           done
