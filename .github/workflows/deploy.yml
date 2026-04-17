@@ -45,10 +45,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Create config file
+      - name: Build and generate PWA
         run: |
-          cat > config.sh << 'CONFIGEOF'
-          # CDN 资源列表：名称、远程URL、本地路径
+          # CDN 资源配置
           declare -a CDNS=(
             "tailwindcss:https://cdn.tailwindcss.com:./libs/tailwindcss.js"
             "vue:https://unpkg.com/vue@3/dist/vue.global.prod.js:./libs/vue.js"
@@ -63,61 +62,36 @@ jobs:
           PWA_THEME_COLOR="#1f2937"
           PWA_BG_COLOR="#f9fafb"
           PWA_ICON_URL="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937"
-          CONFIGEOF
           
-          cat config.sh
-
-      - name: Prepare build directory
-        run: |
+          # 创建 build 目录
           mkdir -p build/libs
           cp -r index.html character assets build/
-
-      - name: Download remote CDN resources
-        run: |
-          source config.sh
           
+          # 下载 CDN 资源
           for cdn in "${CDNS[@]}"; do
             IFS=':' read -r name remote_url local_path <<< "$cdn"
             curl -sL "$remote_url" -o "build/$local_path"
             echo "Downloaded $name"
           done
           
-          echo "Downloaded all CDN resources"
-
-      - name: Replace CDN URLs in index.html
-        run: |
-          source config.sh
-          
+          # 替换 index.html 中的 CDN URL
           cd build
-          
           for cdn in "${CDNS[@]}"; do
             IFS=':' read -r name remote_url local_path <<< "$cdn"
             sed -i "s|$remote_url|$local_path|g" index.html
           done
           
-          echo "Replaced CDN URLs in index.html"
-
-      - name: Replace CDN URLs in character/index.html
-        run: |
-          source config.sh
-          
-          if [ -f build/character/index.html ]; then
-            cd build
-            
+          # 替换 character/index.html 中的 CDN URL
+          if [ -f character/index.html ]; then
             for cdn in "${CDNS[@]}"; do
               IFS=':' read -r name remote_url local_path <<< "$cdn"
-              # 相对路径需要 ../ 前缀
               local_rel_path="${local_path/.\//../}"
               sed -i "s|$remote_url|$local_rel_path|g" character/index.html
             done
-            
-            echo "Replaced CDN URLs in character/index.html"
           fi
-
-      - name: Generate PWA manifest
-        run: |
-          source config.sh
+          cd ..
           
+          # 生成 manifest.json
           cat > build/manifest.json << MANIFESTEOF
           {
             "name": "$PWA_NAME",
@@ -137,10 +111,6 @@ jobs:
             ]
           }
           MANIFESTEOF
-
-      - name: Generate Service Worker
-        run: |
-          source config.sh
           
           # 构建缓存列表
           cache_list=""
@@ -150,6 +120,7 @@ jobs:
             '$local_path',"
           done
           
+          # 生成 Service Worker
           cat > build/sw.js << SWEOF
           const CACHE_NAME = 'rp-hub-v1';
           const urlsToCache = [
@@ -205,20 +176,14 @@ jobs:
             );
           });
           SWEOF
-
-      - name: Update index.html with PWA
-        run: |
-          source config.sh
           
-          if [ -f build/index.html ]; then
-            cp build/index.html build/temp.html
-            
-            sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" build/temp.html
-            
-            awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
-            
-            rm build/temp.html
-          fi
+          # 更新 index.html 添加 PWA 标签
+          cp build/index.html build/temp.html
+          sed -i "s|<title>Roleplay Hub</title>|<title>Roleplay Hub</title><link rel=\"manifest\" href=\"./manifest.json\"><meta name=\"theme-color\" content=\"$PWA_THEME_COLOR\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\"><link rel=\"apple-touch-icon\" href=\"$PWA_ICON_URL\">|" build/temp.html
+          awk '/<\/body>/{print "    <script>if(\"serviceWorker\"in navigator){navigator.serviceWorker.register(\"./sw.js\")}</script>"}1' build/temp.html > build/index.html
+          rm build/temp.html
+          
+          echo "Build completed"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
