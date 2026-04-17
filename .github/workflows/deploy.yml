@@ -47,63 +47,23 @@ jobs:
 
       - name: Build and generate PWA
         run: |
-          # CDN 资源配置 - 使用 | 作为分隔符避免和 URL 中的冒号冲突
-          declare -a CDNS=(
-            "tailwindcss|https://cdn.tailwindcss.com/3.4.1|./libs/tailwindcss.js"
-            "vue|https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js|./libs/vue.js"
-            "marked|https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js|./libs/marked.js"
-            "dompurify|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|./libs/purify.js"
-            "sortable|https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js|./libs/sortable.js"
-          )
-          
-          # PWA 配置
-          PWA_NAME="Roleplay Hub"
-          PWA_SHORT_NAME="RP Hub"
-          PWA_THEME_COLOR="#1f2937"
-          PWA_BG_COLOR="#f9fafb"
-          PWA_ICON_URL="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937"
-          
           # 创建 build 目录
-          mkdir -p build/libs
+          mkdir -p build
           cp -r index.html character assets build/
           
-          # 下载 CDN 资源
-          for cdn in "${CDNS[@]}"; do
-            IFS='|' read -r name remote_url local_path <<< "$cdn"
-            curl -sL "$remote_url" -o "build/$local_path"
-            echo "Downloaded $name"
-          done
-          
-          # 替换 index.html 中的 CDN URL
-          cd build
-          for cdn in "${CDNS[@]}"; do
-            IFS='|' read -r name remote_url local_path <<< "$cdn"
-            sed -i "s|$remote_url|$local_path|g" index.html
-          done
-          
-          # 替换 character/index.html 中的 CDN URL
-          if [ -f character/index.html ]; then
-            for cdn in "${CDNS[@]}"; do
-              IFS='|' read -r name remote_url local_path <<< "$cdn"
-              local_rel_path="${local_path/.\//../}"
-              sed -i "s|$remote_url|$local_rel_path|g" character/index.html
-            done
-          fi
-          cd ..
-          
           # 生成 manifest.json
-          cat > build/manifest.json << MANIFESTEOF
+          cat > build/manifest.json << 'MANIFESTEOF'
           {
-            "name": "$PWA_NAME",
-            "short_name": "$PWA_SHORT_NAME",
+            "name": "Roleplay Hub",
+            "short_name": "RP Hub",
             "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",
             "start_url": "./",
             "display": "standalone",
-            "background_color": "$PWA_BG_COLOR",
-            "theme_color": "$PWA_THEME_COLOR",
+            "background_color": "#f9fafb",
+            "theme_color": "#1f2937",
             "icons": [
               {
-                "src": "$PWA_ICON_URL",
+                "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937",
                 "sizes": "512x512",
                 "type": "image/svg+xml",
                 "purpose": "any"
@@ -112,16 +72,8 @@ jobs:
           }
           MANIFESTEOF
           
-          # 构建缓存列表
-          cache_list=""
-          for cdn in "${CDNS[@]}"; do
-            IFS='|' read -r name remote_url local_path <<< "$cdn"
-            cache_list="$cache_list
-            '$local_path',"
-          done
-          
-          # 生成 Service Worker - 修复不缓存 chrome-extension
-          cat > build/sw.js << SWEOF
+          # 生成 Service Worker
+          cat > build/sw.js << 'SWEOF'
           const CACHE_NAME = 'rp-hub-v1';
           const urlsToCache = [
             './',
@@ -129,7 +81,7 @@ jobs:
             './character/index.html',
             './assets/css/styles.css',
             './assets/js/app.js',
-            './assets/js/utils.js',$cache_list
+            './assets/js/utils.js',
             './manifest.json'
           ];
 
@@ -156,12 +108,9 @@ jobs:
 
           self.addEventListener('fetch', (event) => {
             const requestUrl = new URL(event.request.url);
-            
-            // 跳过 chrome-extension 和其他非 http/https 请求
             if (!requestUrl.protocol.startsWith('http')) {
               return;
             }
-            
             event.respondWith(
               caches.match(event.request, { ignoreSearch: true })
                 .then((response) => {
@@ -186,77 +135,17 @@ jobs:
           });
           SWEOF
           
-          # 用 Python 处理 HTML 更可靠
-          cat > build/process_html.py << 'PYEOF'
-          import re
-          import os
-          
-          # 读取原始文件
-          with open('index.html', 'r', encoding='utf-8') as f:
-              content = f.read()
-          
-          # 1. 移除 styles.css 的时间戳
-          content = re.sub(
-              r'<script>\s*document\.write\(\'<link rel="stylesheet" href="assets/css/styles\.css\?v=[^>]+\'\);\s*</script>',
-              '<link rel="stylesheet" href="assets/css/styles.css">',
-              content
-          )
-          
-          # 2. 移除 utils.js 和 app.js 的时间戳
-          content = re.sub(
-              r'<script>\s*document\.write\(\'<script src="assets/js/utils\.js\?v=[^>]+</script>\'\);\s*document\.write\(\'<script src="assets/js/app\.js\?v=[^>]+</script>\'\);\s*</script>',
-              '<script src="assets/js/utils.js"></script>\n    <script src="assets/js/app.js"></script>',
-              content
-          )
-          
-          # 3. 添加 PWA 标签
-          pwa_tags = f'''<link rel="manifest" href="./manifest.json">
-    <meta name="theme-color" content="{os.environ.get('PWA_THEME_COLOR', '#1f2937')}">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="{os.environ.get('PWA_ICON_URL', '')}">'''
-          
-          content = content.replace('</title>', '</title>\n    ' + pwa_tags.replace('\n', '\n    '))
-          
-          # 4. 添加 Service Worker 注册
-          sw_code = '''    <script>
-        if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("./sw.js");
-        }
-    </script>
-</body>'''
-          content = content.replace('</body>', sw_code)
-          
-          # 替换 CDN URL
-          cdns_env = os.environ.get('CDNS_LIST', '')
-          if cdns_env:
-              for item in cdns_env.split('||'):
-                  if item:
-                      name, remote_url, local_path = item.split('|')
-                      content = content.replace(remote_url, local_path)
-          
-          # 写入
-          with open('index.html', 'w', encoding='utf-8') as f:
-              f.write(content)
-          
-          print('HTML processed successfully')
-          PYEOF
-          
-          # 设置环境变量并运行
+          # 简单处理 index.html - 保持原样，只添加必要的 PWA 标签
           cd build
-          export PWA_THEME_COLOR="$PWA_THEME_COLOR"
-          export PWA_ICON_URL="$PWA_ICON_URL"
           
-          # 构建 CDNS 列表
-          CDNS_LIST=""
-          for cdn in "${CDNS[@]}"; do
-              CDNS_LIST="$CDNS_LIST$cdn||"
-          done
-          export CDNS_LIST="$CDNS_LIST"
+          # 备份原文件
+          cp index.html index.html.bak
           
-          python3 process_html.py
-          rm process_html.py
-          cd ..
+          # 添加 PWA 标签到 title 后面
+          sed -i 's|</title>|</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937">|' index.html
+          
+          # 添加 Service Worker 注册在 </body> 前面
+          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script></body>|' index.html
           
           echo "Build completed"
 
