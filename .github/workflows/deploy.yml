@@ -52,86 +52,38 @@ jobs:
         run: |
           cd build
           
-          # Download Tailwind CSS
           curl -sL "https://cdn.tailwindcss.com" -o libs/tailwindcss.js
-          
-          # Download Vue 3
           curl -sL "https://unpkg.com/vue@3/dist/vue.global.prod.js" -o libs/vue.js
-          
-          # Download Marked
           curl -sL "https://cdn.jsdelivr.net/npm/marked/marked.min.js" -o libs/marked.js
-          
-          # Download DOMPurify
           curl -sL "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js" -o libs/purify.js
-          
-          # Download SortableJS
           curl -sL "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js" -o libs/sortable.js
           
           echo "Downloaded all CDN resources"
 
-      - name: Replace remote URLs in index.html
+      - name: Replace CDN URLs in index.html
         run: |
           cd build
           
-          # Create a Python script to update HTML
-          cat > update_html.py << 'PYEOF'
-          import re
-          import os
-
-          # Read index.html
-          with open('index.html', 'r', encoding='utf-8') as f:
-              content = f.read()
-
-          # Replace CDN URLs with local paths
-          replacements = [
-              ('https://cdn.tailwindcss.com', './libs/tailwindcss.js'),
-              ('https://unpkg.com/vue@3/dist/vue.global.prod.js', './libs/vue.js'),
-              ('https://cdn.jsdelivr.net/npm/marked/marked.min.js', './libs/marked.js'),
-              ('https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', './libs/purify.js'),
-              ('https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js', './libs/sortable.js'),
-          ]
-
-          for old_url, new_path in replacements:
-              content = content.replace(f'src="{old_url}"', f'src="{new_path}"')
-
-          # Write back
-          with open('index.html', 'w', encoding='utf-8') as f:
-              f.write(content)
-
-          print("Replaced CDN URLs with local paths")
-          PYEOF
+          sed -i 's|https://cdn.tailwindcss.com|./libs/tailwindcss.js|g' index.html
+          sed -i 's|https://unpkg.com/vue@3/dist/vue.global.prod.js|./libs/vue.js|g' index.html
+          sed -i 's|https://cdn.jsdelivr.net/npm/marked/marked.min.js|./libs/marked.js|g' index.html
+          sed -i 's|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|./libs/purify.js|g' index.html
+          sed -i 's|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|./libs/sortable.js|g' index.html
           
-          python3 update_html.py
-          rm update_html.py
+          echo "Replaced CDN URLs in index.html"
 
-      - name: Replace remote URLs in character/index.html
+      - name: Replace CDN URLs in character/index.html
         run: |
           if [ -f build/character/index.html ]; then
             cd build
-            cat > update_char_html.py << 'PYEOF'
-            import re
-            import os
-
-            with open('character/index.html', 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            replacements = [
-                ('https://cdn.tailwindcss.com', '../libs/tailwindcss.js'),
-                ('https://unpkg.com/vue@3/dist/vue.global.prod.js', '../libs/vue.js'),
-                ('https://cdn.jsdelivr.net/npm/marked/marked.min.js', '../libs/marked.js'),
-                ('https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js', '../libs/purify.js'),
-                ('https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js', '../libs/sortable.js'),
-            ]
-
-            for old_url, new_path in replacements:
-                content = content.replace(f'src="{old_url}"', f'src="{new_path}"')
-
-            with open('character/index.html', 'w', encoding='utf-8') as f:
-                f.write(content)
-            print("Replaced CDN URLs in character/index.html")
-            PYEOF
-            python3 update_char_html.py
-            rm update_char_html.py
+            
+            sed -i 's|https://cdn.tailwindcss.com|../libs/tailwindcss.js|g' character/index.html
+            sed -i 's|https://unpkg.com/vue@3/dist/vue.global.prod.js|../libs/vue.js|g' character/index.html
+            sed -i 's|https://cdn.jsdelivr.net/npm/marked/marked.min.js|../libs/marked.js|g' character/index.html
+            sed -i 's|https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js|../libs/purify.js|g' character/index.html
+            sed -i 's|https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js|../libs/sortable.js|g' character/index.html
+            
+            echo "Replaced CDN URLs in character/index.html"
           fi
 
       - name: Generate PWA manifest
