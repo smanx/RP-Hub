@@ -151,28 +151,20 @@ createApp({
             isUpdateScrolledToBottom.value = (el.scrollHeight - el.scrollTop - el.clientHeight) < 10;
         };
         const latestUpdate = reactive({
-            id: 10114, // 确保这是一个五位数ID，每次更新内容时增加这个数字
+            id: 10115, // 确保这是一个五位数ID，每次更新内容时增加这个数字
             date: new Date().toISOString().split('T')[0],
-            title: '更新公告',
+            title: '网站公告',
             content: `
-### RP-Hub 1.5.2 更新
+### RP-Hub 1.5.3
 
-**记忆引擎优化**
-- **高频精准补录**：重构为 2 轮一补录的精密机制，大幅提升长线剧情连贯性与细节记忆能力。
-- **NPC追踪**：新增精确的 NPC 标签系统，严禁模型使用代词，上下文自动聚合 \`[出场人物]\` 阵容，有效防止角色关系错乱。
-- **稳定性优化**：深度优化底层指令，引入严格模板，彻底解决部分模型频发的 JSON 解析崩溃（422报错）问题。
-
-**世界书系统优化**
-- **去除预算机制**：彻底去除世界书的 Token 预算上限限制（默认无限制），只要命中即可全量无缝注入上下文。
-- **优化触发逻辑**：修复了世界书触发楼层异常的 Bug，现已精准反馈实际扫描深度内的命中情况。
-
-**性能与体验提升**
-- **性能优化**：优化了超长楼层下的对话加载与滑动性能，减轻卡顿问题。
-- **UI 优化**：记忆管理卡片新增了 NPC 专属标签显示，以及更加完善的手动编辑支持。
+- 新增 "2.5D唯美风"，"本子动漫风" ，"GalGame风" 生图风格，可用于角色卡工坊
+- 优化了预设，解决了AI过度计数、罗列数据以及频繁使用“不是...而是...”的问题
+- 模型选择弹窗优化，增加最大高度并解决标签被遮挡问题，新增 Kimi/Moonshot 模型分类标签
+- 生图引擎规则增强，提升了出图准确度，降低了空回的概率
 
 本项目为全开源公益项目，严禁倒卖源码，二改需经作者授权
 
-#### 更新时间：04/22/23:28
+#### 更新时间：04/25/02:45
                     `
         });
 
@@ -230,7 +222,7 @@ createApp({
         const userInput = ref('');
         const modelSearchQuery = ref('');
         const activeModelTag = ref('all');
-        const popularModelFamilies = ['gpt', 'claude', 'gemini', 'deepseek', 'qwen', 'llama', 'glm'];
+        const popularModelFamilies = ['gpt', 'claude', 'gemini', 'deepseek', 'qwen', 'llama', 'glm', 'minimax', 'kimi', 'moonshot', 'grok'];
         const characterSearchQuery = ref('');
         const availableModels = ref([]);
         const toasts = ref([]);
@@ -1083,10 +1075,22 @@ createApp({
             if (!regex) return;
 
             const defaultArtists = '[[[artist:dishwasher1910]]], {{yd_(orange_maru)}}, [artist:ciloranko], [artist:sho_(sho_lwlw)], [ningen mame], year 2024,';
-            const r18Artists = '{{artist:yd_(orange maru)}}, nixeu, {ikuchan kaoru}, cutesexyrobutts, redrop, [[artist:kojima saya]], lam_(ramdayo), oekakizuki, qiandaiyiyu,';
+            const r18Artists = "0.9::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
+            const animeArtists = '1.4::asanagi::,{{{{{artist:asanagi}}}}},1.2::xiaoluo_xl::,1.3::Artist: misaka_12003-gou::,1.2::Artist:shexyo::,0.7::Artist:b.sa_(bbbs)::,1::Artist:qiandaiyiyu::,1.05::artist:natedecock::,1.05::artist:kunaboto::,0.75::artist:kandata_nijou::,1.05::artist:zer0.zer0 ::,1.05::artist:jasony::,0.75::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, {textless version, The image is highly intricate finished drawn,write realistically,true to life}, 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::, 1.63::photorealistic::,3::age slider::,1.63::photo(medium)::, 2::best quality, absurdres, very aesthetic, detailed, masterpiece::,-4::Muscle definition, abs::';
+            const galgameArtists = 'artist:ningen_mame,, noyu_(noyu23386566),, toosaka asagi,, location,\\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,:,, very aesthetic, masterpiece, no text,';
 
-            const targetArtists = settings.imageStyle === 'r18' ? r18Artists : defaultArtists;
-            const styleName = settings.imageStyle === 'r18' ? '本子风' : '默认风格';
+            let targetArtists = defaultArtists;
+            let styleName = '韩漫小清新风';
+            if (settings.imageStyle === 'r18') {
+                targetArtists = r18Artists;
+                styleName = '2.5D唯美风';
+            } else if (settings.imageStyle === 'anime') {
+                targetArtists = animeArtists;
+                styleName = '本子动漫风';
+            } else if (settings.imageStyle === 'galgame') {
+                targetArtists = galgameArtists;
+                styleName = 'GalGame风';
+            }
 
             // 动态替换 URL 中的 artist 和 size 参数
             const oldReplacement = regex.replacement;
@@ -3810,14 +3814,23 @@ summary 长度控制在300-500字，尽量完全详细。
             // 1. NAI画图正则 (统一版本)
             const imageGenRegexName = 'NAI画图正则';
             const defaultArtists = '[[[artist:dishwasher1910]]], {{yd_(orange_maru)}}, [artist:ciloranko], [artist:sho_(sho_lwlw)], [ningen mame], year 2024,';
-            const r18Artists = '{{artist:yd_(orange maru)}}, nixeu, {ikuchan kaoru}, cutesexyrobutts, redrop, [[artist:kojima saya]], lam_(ramdayo), oekakizuki, qiandaiyiyu,';
+            const r18Artists = "0.9::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
+            const animeArtists = '1.4::asanagi::,{{{{{artist:asanagi}}}}},1.2::xiaoluo_xl::,1.3::Artist: misaka_12003-gou::,1.2::Artist:shexyo::,0.7::Artist:b.sa_(bbbs)::,1::Artist:qiandaiyiyu::,1.05::artist:natedecock::,1.05::artist:kunaboto::,0.75::artist:kandata_nijou::,1.05::artist:zer0.zer0 ::,1.05::artist:jasony::,0.75::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, {textless version, The image is highly intricate finished drawn,write realistically,true to life}, 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::, 1.63::photorealistic::,3::age slider::,1.63::photo(medium)::, 2::best quality, absurdres, very aesthetic, detailed, masterpiece::,-4::Muscle definition, abs::';
+            const galgameArtists = 'artist:ningen_mame,, noyu_(noyu23386566),, toosaka asagi,, location,\\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,:,, very aesthetic, masterpiece, no text,';
 
-            const targetArtists = settings.imageStyle === 'r18' ? r18Artists : defaultArtists;
+            let targetArtists = defaultArtists;
+            if (settings.imageStyle === 'r18') {
+                targetArtists = r18Artists;
+            } else if (settings.imageStyle === 'anime') {
+                targetArtists = animeArtists;
+            } else if (settings.imageStyle === 'galgame') {
+                targetArtists = galgameArtists;
+            }
 
             const imageGenRegexContent = {
                 name: imageGenRegexName,
-                regex: '/image###([^>]+)###/g',
-                replacement: '<div style="width: auto; height: auto; max-width: 100%; border: 8px solid transparent; background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF); position: relative; border-radius: 16px; overflow: hidden; display: flex; justify-content: center; align-items: center; animation: gradientBG 3s ease infinite; box-shadow: 0 4px 15px rgba(204,229,255,0.3);"><div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div><img src="https://std.loliyc.com/generate?tag=$1&token=' + imageGenToken + '&model=nai-diffusion-4-5-full&artist=' + targetArtists + '&size=' + settings.imageSize + '&steps=40&scale=6&cfg=0&sampler=k_dpmpp_2m_sde&negative={{{{bad anatomy}}}},{bad feet},bad hands,{{{bad proportions}}},{blurry},cloned face,cropped,{{{deformed}}},{{{disfigured}}},error,{{{extra arms}}},{extra digit},{{{extra legs}}},extra limbs,{{extra limbs}},{fewer digits},{{{fused fingers}}},gross proportions,ink eyes,ink hair,jpeg artifacts,{{{{long neck}}}},low quality,{malformed limbs},{{missing arms}},{missing fingers},{{missing legs}},{{{more than 2 nipples}}},mutated hands,{{{mutation}}},normal quality,owres,{{poorly drawn face}},{{poorly drawn hands}},reen eyes,signature,text,{{too many fingers}},{{{ugly}}},username,uta,watermark,worst quality,{{{more than 2 legs}}}&nocache=0&noise_schedule=karras"  alt="生成图片" style="max-width: 100%; height: auto; width: auto; display: block; object-fit: contain; transition: transform 0.3s ease; position: relative; z-index: 1;"></div><style>@keyframes gradientBG {0% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}50% {background-image: linear-gradient(225deg, #FFC9D9, #CCE5FF);}100% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}}</style>',
+                regex: '/image###([\\s\\S]*?)###/g',
+                replacement: '<div style="width: auto; height: auto; max-width: 100%; border: 8px solid transparent; background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF); position: relative; border-radius: 16px; overflow: hidden; display: flex; justify-content: center; align-items: center; animation: gradientBG 3s ease infinite; box-shadow: 0 4px 15px rgba(204,229,255,0.3);"><div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div><img src="https://std.loliyc.com/generate?tag=$1&token=' + imageGenToken + '&model=nai-diffusion-4-5-full&artist=' + targetArtists + '&size=' + settings.imageSize + '&steps=40&scale=6&cfg=0&sampler=k_dpmpp_2m_sde&negative={{{{bad anatomy}}}},{bad feet},bad hands,{{{bad proportions}}},{blurry},cloned face,cropped,{{{deformed}}},{{{disfigured}}},error,{{{extra arms}}},{extra digit},{{{extra legs}}},extra limbs,{{extra limbs}},{fewer digits},{{{fused fingers}}},gross proportions,ink eyes,ink hair,jpeg artifacts,{{{{long neck}}}},low quality,{malformed limbs},{{missing arms}},{missing fingers},{{missing legs}},{{{more than 2 nipples}}},mutated hands,{{{mutation}}},normal quality,owres,{{poorly drawn face}},{{poorly drawn hands}},reen eyes,signature,text,{{too many fingers}},{{{ugly}}},username,uta,watermark,worst quality,{{{more than 2 legs}}},awkward hand sign,weird hand gesture,contorted hand,unnatural finger pose,deformed hand gesture,{shaka},{hang loose},{{rock on}},{shaka sign}&nocache=0&noise_schedule=karras"  alt="生成图片" style="max-width: 100%; height: auto; width: auto; display: block; object-fit: contain; transition: transform 0.3s ease; position: relative; z-index: 1;"></div><style>@keyframes gradientBG {0% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}50% {background-image: linear-gradient(225deg, #FFC9D9, #CCE5FF);}100% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}}</style>',
                 placement: [2],
                 markdownOnly: true,
                 promptOnly: false,
@@ -3844,7 +3857,8 @@ summary 长度控制在300-500字，尽量完全详细。
                 secondary_keys: [],
                 content: `<auto_image_gen>\n在精彩场景描绘时使用“<image>”作为场景图片，使用绘画tag对场景人物进行特写。一个场景必须拥有1-3个<image>。
 注意:始终使用逗号分隔条目.另外请保证同一角色的特征，如发色，瞳孔颜色，体态，外貌的一致性.
-使用 <image>image###生成的提示词###</image> 的格式！
+使用 image###生成的提示词### 的格式！
+注意：如为nsfw场景，生成的提示词的最开头必须带上 nsfw 标签！
 
 ###提示词生成指导:
 第一重要的在于人物的特点,例如：white hair,性别：1girl,1boy,特色：mesugaki,ojousama,服装特色：china_dress,gothic,glasses,表情动作：smile,crying,tearing_clothes,disgust,angry,kubrick_stare,
@@ -3908,7 +3922,7 @@ summary 长度控制在300-500字，尽量完全详细。
 2. **同人角色/固定外观一致性**：对于特定世界观或同人角色，必须带上极其准确的专属特征Tag组合。对常驻特征（如特定发型、异色瞳、专属装饰物等）加上最高权重 {{{Tag}}}，避免生成外形崩坏和不一致。
 
 <生成格式>
-<image>image###生成的提示词###</image>
+image###生成的提示词###
 
 特别提示：出现user或主角参与的情况(如被口、手交），禁止出现主角的人物形象(脸部，头部）！必须使用第一视角(POV）相关提示词！且要作为Character  Prompt添加，禁止出现角色卡和角色名字(包括英文和拼音），中文和{{user}}是明令禁止的，且一定要保持同一人物在上下文中的形象一致性，不要丢失人物特性(如有异色瞳特征人物），涉及人物常见特征(如发色，瞳孔颜色等）的提示词请增加权重\n</auto_image_gen>`,
                 constant: true,
@@ -5167,7 +5181,9 @@ summary 长度控制在300-500字，尽量完全详细。
 - 过于机械的人设演绎
 - 过长或大段的文学性环境描写
 - 任何形式的道歉，截断输出
-- "因为用力"，"手指因为用力而泛白"，"泛白"，"麝香"，“囊袋”，“淫靡”，“翕”，“石龛”，“肥美”，“肉团”，“投入石子”
+- 任何形式的数数、罗列数字、计算时间或数据的行为（禁止计算“第几次”、罗列“几个字”、“测量多少厘米/角度”等机械且破坏沉浸感的数据描述）
+- 禁止使用“不是……而是……”、“比起……更……”及类似具有总结性、说教式、AI味的对比句型
+- "因为用力"，"手指因为用力而泛白"，"泛白"，"麝香"，“囊袋”，“淫靡”，“翕”，“石龛”，“肥美”，“肉团”，“投入石子”，“拉风箱”
 禁止输出形式或内容陈列完毕---\n</prohibited_content>`;
             const existingBanRulePreset = presets.value.find(p => p.name === banRulePresetName);
 
