@@ -114,14 +114,14 @@ createApp({
             quotaError.value = false;
             try {
                 const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-                const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+                const baseUrl = imageGenToken.startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
                 const response = await fetch(`${baseUrl}/api/api/getUser`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ toUserId: imageGenToken })
                 });
                 const data = await response.json();
-                if (data.status === 'ok' && (data.type === 'std' || data.type === 'sta1n')) {
+                if (data.status === 'ok' && data.type === 'std') {
                     let val = parseInt(data.data.value);
                     if (val > 1000) val = 1000;
                     quotaValue.value = val;
@@ -2057,7 +2057,7 @@ ${rawHtml}
                 const startTime = performance.now();
 
                 const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-                const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+                const baseUrl = imageGenToken.startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
 
                 await fetch(baseUrl, {
                     method: 'HEAD',
@@ -3814,7 +3814,7 @@ summary 长度控制在300-500字，尽量完全详细。
 
         const enforceSpecialRules = () => {
             const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-            const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+            const baseUrl = imageGenToken.startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
 
             // 1. NAI画图正则 (统一版本)
             const imageGenRegexName = 'NAI画图正则';
