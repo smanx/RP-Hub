@@ -488,14 +488,14 @@
 
                     <div v-else v-for="(msg, index) in chatHistory" :key="index" ref="messageElements"
                         :data-role="msg.role"
-                        v-show="!(msg.role === 'assistant' && index === chatHistory.length - 1 && isThinking && !(parseCot(msg.content).cot || parseCot(msg.content).main))"
-                        :class="['flex w-full scroll-reveal-container', msg.isSelf ? 'justify-end scroll-reveal-right' : 'justify-start scroll-reveal-left']"
+                        v-show="!(msg.role === 'assistant' && index === chatHistory.length - 1 && isThinking && !(msg.reasoning || parseCot(msg.content).cot || parseCot(msg.content).main))"
+                        :class="['flex w-full scroll-reveal-container', msg.isSelf ? 'justify-end' : 'justify-start', msg.skipReveal ? 'reveal-active' : (msg.isSelf ? 'scroll-reveal-right' : 'scroll-reveal-left')]"
                         :style="{ transitionDelay: (index % 5) * 50 + 'ms' }">
                         <div
-                            :class="['flex', msg.isEditing_Message ? 'w-full max-w-full' : ['md:max-w-[75%] lg:max-w-[70%]', settings.immersiveMode ? 'max-w-full' : 'max-w-[99%]'], (parseCot(msg.content).cot || msg.isEditing_Message) ? 'w-full' : '', msg.isSelf ? 'flex-row-reverse' : 'flex-row']">
+                            :class="['flex', msg.isEditing_Message ? 'w-full max-w-full' : ['md:max-w-[75%] lg:max-w-[70%]', settings.immersiveMode ? 'max-w-full' : 'max-w-[99%]'], (msg.reasoning || parseCot(msg.content).cot || msg.isEditing_Message || messageUsesHtmlFrame(msg)) ? 'w-full' : '', msg.isSelf ? 'flex-row-reverse' : 'flex-row']">
                             <!-- Avatar -->
                             <div v-show="!settings.immersiveMode"
-                                :class="['flex-shrink-0 select-none', msg.shouldAnimate ? 'animate-message-in' : '']">
+                                :class="['flex-shrink-0 select-none', msg.shouldAnimate ? 'animate-message-fade-in' : '']">
                                 <div v-if="msg.role === 'user'"
                                     :class="['w-9 h-9 rounded-full overflow-hidden shadow-sm transition-transform', msg.isSelf ? 'ml-1.5' : 'mr-1.5']">
                                     <img v-if="msg?.avatar || (msg?.isSelf && user?.avatar)"
@@ -513,19 +513,19 @@
                             </div>
 
                             <div
-                                :class="['flex flex-col min-w-0', (parseCot(msg.content).cot || msg.isEditing_Message) ? 'w-full' : '', msg.isSelf ? 'items-end' : 'items-start']">
+                                :class="['flex flex-col min-w-0', (msg.reasoning || parseCot(msg.content).cot || msg.isEditing_Message || messageUsesHtmlFrame(msg)) ? 'flex-1 w-full' : '', msg.isSelf ? 'items-end' : 'items-start']">
                                 <!-- Name (Outside Bubble) -->
                                 <div v-show="!settings.immersiveMode"
-                                    :class="['text-[10px] font-bold text-gray-600 mb-1 select-none px-1.5 py-0.5 rounded-md bg-white/50 backdrop-blur-sm border border-white/20 w-fit shadow-sm truncate max-w-[150px] md:max-w-[250px] msg-name-tag', msg.isSelf ? 'ml-auto mr-1' : 'mr-auto ml-1', msg.shouldAnimate ? 'animate-message-in' : '']">
+                                    :class="['text-[10px] font-bold text-gray-600 mb-1 select-none px-1.5 py-0.5 rounded-md bg-white/50 backdrop-blur-sm border border-white/20 w-fit shadow-sm truncate max-w-[150px] md:max-w-[250px] msg-name-tag', msg.isSelf ? 'ml-auto mr-1' : 'mr-auto ml-1', msg.shouldAnimate ? 'animate-message-fade-in' : '']">
                                     {{ msg.name || (msg.role === 'user' ? user.name : 'Unknown') }}
                                 </div>
                                 <!-- Message Bubble -->
                                 <div class="group relative"
-                                    :class="{'w-full': parseCot(msg.content).cot || msg.isEditing_Message}">
+                                    :class="{'w-full': msg.reasoning || parseCot(msg.content).cot || msg.isEditing_Message || messageUsesHtmlFrame(msg)}">
                                     <div
                                         :class="['p-0 rounded-2xl shadow-sm text-sm md:text-base leading-relaxed overflow-hidden',
-                                        msg.shouldAnimate ? 'animate-message-in' : '',
-                                        (parseCot(msg.content).cot || msg.isEditing_Message) ? 'w-full' : '',
+                                        msg.shouldAnimate && !(msg.role === 'assistant' && msg.reasoning) ? 'animate-message-in' : '',
+                                        (msg.reasoning || parseCot(msg.content).cot || msg.isEditing_Message || messageUsesHtmlFrame(msg)) ? 'w-full' : '',
                                         msg.role === 'user' ? (msg.isSelf ? 'bg-blue-50/85 text-gray-900 shadow-[0_4px_12px_rgba(59,130,246,0.1)] border border-primary-300/50' : 'bg-white/70 text-gray-800 border border-white/40 shadow-card') :
                                         msg.role === 'system' ? 'bg-red-50/70 text-red-800 border border-red-200/40' :
                                         'bg-white/70 text-gray-800 border border-white/40 shadow-card',
@@ -574,26 +574,20 @@
                                         </div>
 
                                         <div v-else class="message-content-wrapper"
+                                            :class="{'w-full': msg.reasoning || parseCot(msg.content).cot || msg.isEditing_Message || messageUsesHtmlFrame(msg)}"
                                             :style="index < chatHistory.length - (settings.renderLayerLimit > 100 ? 99999 : settings.renderLayerLimit) ? 'content-visibility: auto; contain-intrinsic-size: auto 150px;' : ''">
-                                            <!-- CoT Part -->
-                                            <div v-if="parseCot(msg.content).cot" class="cot-wrapper">
-                                                <div class="cot-ui" :class="{ 'is-open': msg.isCotOpen }">
-                                                    <div class="cot-header" @click="msg.isCotOpen = !msg.isCotOpen">
-                                                        <div v-if="index === chatHistory.length - 1 && (isGenerating || isRemoteGenerating) && !parseCot(msg.content).isFinished"
-                                                            class="flex items-center text-primary-600">
-                                                            <svg class="animate-spin w-3.5 h-3.5 mr-2"
-                                                                xmlns="http://www.w3.org/2000/svg" fill="none"
-                                                                viewBox="0 0 24 24">
-                                                                <circle class="opacity-25" cx="12" cy="12" r="10"
-                                                                    stroke="currentColor" stroke-width="4"></circle>
-                                                                <path class="opacity-75" fill="currentColor"
-                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                                                                </path>
-                                                            </svg>
-                                                            <span class="text-xs font-bold">{{ isThinking ?
-                                                                '已响应，等待思考...' : '正在分析...' }}</span>
+                                            <!-- Native Model Reasoning Part -->
+                                            <div v-if="msg.reasoning" class="native-thinking-wrapper">
+                                                <div class="cot-ui native-thinking-card"
+                                                    :class="{ 'is-live': index === chatHistory.length - 1 && isThinking, 'is-open': msg.isReasoningOpen !== false }">
+                                                    <button type="button" class="cot-header native-thinking-header"
+                                                        @click="msg.isReasoningUserToggled = true; msg.isReasoningOpen = msg.isReasoningOpen === false">
+                                                        <div v-if="index === chatHistory.length - 1 && isThinking"
+                                                            class="flex items-center text-primary-600 min-w-0">
+                                                            <span class="live-dots mr-2" aria-hidden="true"><i></i><i></i><i></i></span>
+                                                            <span class="text-xs font-bold truncate">原生思考中</span>
                                                         </div>
-                                                        <div v-else class="flex items-center">
+                                                        <div v-else class="flex items-center min-w-0">
                                                             <svg class="w-3.5 h-3.5 mr-2 opacity-70" fill="none"
                                                                 stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path stroke-linecap="round" stroke-linejoin="round"
@@ -601,25 +595,68 @@
                                                                     d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
                                                                 </path>
                                                             </svg>
-                                                            <span class="text-xs font-bold">分析过程 (COT)</span>
+                                                            <span class="text-xs font-bold truncate">原生思考</span>
                                                         </div>
-                                                        <svg class="w-3.5 h-3.5 ml-auto opacity-50 chevron" fill="none"
+                                                        <span class="native-thinking-meta">
+                                                            {{ (msg.reasoning || '').length }} 字
+                                                        </span>
+                                                        <svg class="w-3.5 h-3.5 ml-2 opacity-60 chevron" fill="none"
                                                             stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round"
                                                                 stroke-width="2" d="M19 9l-7 7-7-7"></path>
                                                         </svg>
+                                                    </button>
+                                                    <div class="cot-body native-thinking-body"
+                                                        :class="{ 'is-open': msg.isReasoningOpen !== false }">
+                                                        <div class="cot-inner native-thinking-inner">
+                                                            <div class="cot-content native-thinking-scroll custom-scrollbar"
+                                                                :style="settings.fontSize ? { fontSize: (settings.fontSize - 1) + 'px' } : {}"
+                                                                v-text="msg.reasoning"></div>
+                                                        </div>
                                                     </div>
-                                                    <div class="cot-body" :class="{ 'is-open': msg.isCotOpen }">
-                                                        <div class="cot-inner">
-                                                            <div class="cot-content">
+                                                </div>
+                                            </div>
+                                            <!-- CoT Part -->
+                                            <div v-if="parseCot(msg.content).cot" class="cot-wrapper native-thinking-wrapper">
+                                                <div class="cot-ui native-thinking-card"
+                                                    :class="{ 'is-live': index === chatHistory.length - 1 && (isGenerating || isRemoteGenerating) && !parseCot(msg.content).isFinished, 'is-open': msg.isCotOpen }">
+                                                    <button type="button" class="cot-header native-thinking-header"
+                                                        @click="msg.isCotOpen = !msg.isCotOpen">
+                                                        <div v-if="index === chatHistory.length - 1 && (isGenerating || isRemoteGenerating) && !parseCot(msg.content).isFinished"
+                                                            class="flex items-center text-primary-600 min-w-0">
+                                                            <span class="live-dots mr-2" aria-hidden="true"><i></i><i></i><i></i></span>
+                                                            <span class="text-xs font-bold">正在分析...</span>
+                                                        </div>
+                                                        <div v-else class="flex items-center min-w-0">
+                                                            <svg class="w-3.5 h-3.5 mr-2 opacity-70" fill="none"
+                                                                stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                                    stroke-width="2"
+                                                                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                                                                </path>
+                                                            </svg>
+                                                            <span class="text-xs font-bold truncate">分析过程 (COT)</span>
+                                                        </div>
+                                                        <span class="native-thinking-meta">
+                                                            {{ (parseCot(msg.content).cot || '').length }} 字
+                                                        </span>
+                                                        <svg class="w-3.5 h-3.5 ml-2 opacity-60 chevron" fill="none"
+                                                            stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                                        </svg>
+                                                    </button>
+                                                    <div class="cot-body native-thinking-body"
+                                                        :class="{ 'is-open': msg.isCotOpen }">
+                                                        <div class="cot-inner native-thinking-inner">
+                                                            <div class="cot-content native-thinking-scroll cot-thinking-scroll"
+                                                                :style="settings.fontSize ? { fontSize: (settings.fontSize - 1) + 'px' } : {}">
                                                                 <div v-if="index >= chatHistory.length - (settings.renderLayerLimit > 100 ? 99999 : settings.renderLayerLimit)"
                                                                     class="markdown-body"
-                                                                    :style="settings.fontSize ? { fontSize: (settings.fontSize - 1) + 'px' } : {}"
                                                                     v-html="renderMarkdown(parseCot(msg.content).cot, 'assistant', true)">
                                                                 </div>
                                                                 <div v-else
                                                                     class="markdown-body px-4 py-3 whitespace-pre-wrap text-gray-500"
-                                                                    :style="settings.fontSize ? { fontSize: (settings.fontSize - 1) + 'px' } : { fontSize: '14px' }"
                                                                     v-text="parseCot(msg.content).cot"></div>
                                                             </div>
                                                         </div>
@@ -637,12 +674,7 @@
                                                     </div>
                                                     <div v-if="processMainContent(parseCot(msg.content).main, true).showSpinner"
                                                         class="flex flex-col items-center justify-center p-8 w-full mt-2 gap-4 opacity-90">
-                                                        <svg class="w-12 h-12 text-blue-500 animate-[spin_2s_linear_infinite]"
-                                                            viewBox="25 25 50 50">
-                                                            <circle class="ui-spinner-path" cx="50" cy="50" r="20"
-                                                                fill="none" stroke-width="4" stroke-miterlimit="10">
-                                                            </circle>
-                                                        </svg>
+                                                        <div class="ui-build-dots" aria-hidden="true"><i></i><i></i><i></i></div>
                                                         <span
                                                             class="text-[16px] font-bold tracking-wider text-blue-600/80">正在构建
                                                             UI 界面</span>
@@ -734,7 +766,7 @@
                     </div>
 
                     <!-- Typing Indicator -->
-                    <div v-if="(isGenerating || isRemoteGenerating) && (!isReceiving || isThinking)"
+                    <div v-if="(isGenerating || isRemoteGenerating) && !isReceiving && !isThinking"
                         class="flex w-full justify-start">
                         <div class="flex max-w-[99%] md:max-w-[75%] lg:max-w-[70%] flex-row">
                             <div v-show="!settings.immersiveMode" class="flex-shrink-0 animate-message-in"
@@ -750,11 +782,9 @@
                                 </div>
                                 <div :class="['min-w-[150px] min-h-[4.5rem] px-6 py-4 rounded-2xl bg-white/70 backdrop-blur-md glass-stabilize border border-white/40 shadow-card flex flex-col items-center justify-center gap-2 transition-all duration-500 typing-bubble animate-message-in', settings.immersiveMode ? '' : 'rounded-tl-none']"
                                     style="animation-delay: 200ms;">
-                                    <div class="typing-indicator scale-125" :class="{ 'thinking-mode': isThinking }">
+                                    <div class="typing-indicator scale-125">
                                         <span></span><span></span><span></span>
                                     </div>
-                                    <div v-if="isThinking" class="text-[10px] text-purple-600 font-bold tracking-wider">
-                                        已响应，等待思考...</div>
                                     <div v-if="isGenerating"
                                         class="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono bg-white/50 backdrop-blur-sm px-2.5 py-1 rounded-full border border-white/50 animate-fade-in mt-1 shadow-sm typing-timer-badge">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2012,21 +2042,6 @@
                                         生成参数
                                     </h4>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <!-- Context Size -->
-                                        <div
-                                            class="bg-gray-50 p-4 rounded-xl border border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200">
-                                            <div class="flex justify-between items-center mb-3">
-                                                <label
-                                                    class="text-xs font-bold text-gray-500 uppercase tracking-wider">上下文长度</label>
-                                                <span
-                                                    class="text-xs font-mono text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-100">{{
-                                                    settings.contextSize }}</span>
-                                            </div>
-                                            <input v-model.number="settings.contextSize" type="range" min="4096"
-                                                max="1000000" step="1024"
-                                                class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition-all">
-                                        </div>
-
                                         <!-- Temperature -->
                                         <div
                                             class="bg-gray-50 p-4 rounded-xl border border-gray-100 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200">
@@ -2065,7 +2080,7 @@
                                                 class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">自动生图密钥</label>
                                             <input v-model="settings.imageGenKey" type="password"
                                                 class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 text-sm focus:ring-2 focus:ring-teal-100 focus:border-teal-400 focus:outline-none transition-all shadow-sm"
-                                                placeholder="STD-...">
+                                                placeholder="STA1N-...">
                                         </div>
 
                                         <!-- Image Style -->
@@ -3092,7 +3107,7 @@
                         <div class="mt-6 pt-4 border-t border-gray-100">
                             <div class="grid grid-cols-2 gap-3 text-sm">
                                 <label
-                                    v-for="(label, key) in {includeNames: '包括名称', recursiveScan: '递归扫描', caseSensitive: '区分大小写', matchWholeWords: '匹配整个单词', useGroupScoring: '使用群组评分', overflowWarning: '溢出警报'}"
+                                    v-for="(label, key) in {includeNames: '包括名称', recursiveScan: '递归扫描', caseSensitive: '区分大小写', matchWholeWords: '匹配整个单词'}"
                                     :key="key"
                                     :class="['flex items-center space-x-2 cursor-pointer p-2 rounded-xl border transition-all select-none shadow-sm active:scale-95',
                                                worldInfoSettings[key] ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-white border-gray-100 text-gray-600 hover:border-primary-200']">
@@ -4227,7 +4242,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 </svg>
-                                高级设置 (逻辑、分组、时效、递归)
+                                高级设置 (递归、扫描)
                             </span>
                             <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform duration-300"
                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4236,92 +4251,6 @@
                             </svg>
                         </summary>
                         <div class="p-6 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                            <!-- Selective Logic -->
-                            <div class="space-y-3">
-                                <h4
-                                    class="text-xs font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-1">
-                                    逻辑过滤 (Selective)</h4>
-                                <div class="flex items-center gap-2">
-                                    <div class="relative flex-1 group">
-                                        <select v-model.number="editingWorldInfo.data.selectiveLogic"
-                                            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 focus:outline-none appearance-none transition-all shadow-sm cursor-pointer group-hover:border-gray-300">
-                                            <option :value="0">AND ANY (主词 & 任一次词)</option>
-                                            <option :value="1">AND ALL (主词 & 所有次词)</option>
-                                            <option :value="2">NOT ANY (主词 & 无任一次词)</option>
-                                            <option :value="3">NOT ALL (主词 & 非所有次词)</option>
-                                        </select>
-                                        <div
-                                            class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover:text-gray-600 transition-colors">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor"
-                                                viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
-                                                    d="M19 9l-7 7-7-7"></path>
-                                            </svg>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input
-                                    :value="editingWorldInfo.data.secondary_keys ? editingWorldInfo.data.secondary_keys.join(', ') : ''"
-                                    @input="editingWorldInfo.data.secondary_keys = $event.target.value.split(',').map(k => k.trim())"
-                                    type="text"
-                                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                                    placeholder="次级关键词 (逗号分隔)">
-                            </div>
-
-                            <!-- Grouping -->
-                            <div class="space-y-3">
-                                <h4
-                                    class="text-xs font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-1">
-                                    分组 (Group)</h4>
-                                <div class="flex gap-2">
-                                    <input type="text" v-model="editingWorldInfo.data.group"
-                                        class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                                        placeholder="组名">
-                                    <input type="number" v-model.number="editingWorldInfo.data.groupWeight"
-                                        class="w-20 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                                        placeholder="权重">
-                                </div>
-                                <label
-                                    :class="['flex items-center space-x-2 cursor-pointer p-2 rounded-xl border transition-all select-none shadow-sm active:scale-95',
-                                               editingWorldInfo.data.preferential ? 'bg-primary-50 border-primary-200 text-primary-700' : 'bg-white border-gray-100 text-gray-600 hover:border-primary-200']">
-                                    <input type="checkbox" v-model="editingWorldInfo.data.preferential" class="hidden">
-                                    <div
-                                        :class="['w-4 h-4 rounded flex items-center justify-center border transition-colors',
-                                                 editingWorldInfo.data.preferential ? 'bg-primary-600 border-primary-600' : 'bg-white border-gray-300']">
-                                        <svg v-if="editingWorldInfo.data.preferential" class="w-3 h-3 text-white"
-                                            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="4"
-                                                d="M5 13l4 4L19 7"></path>
-                                        </svg>
-                                    </div>
-                                    <span class="text-xs font-bold">组内优先 (基于Order)</span>
-                                </label>
-                            </div>
-
-                            <!-- Timed Effects -->
-                            <div class="space-y-3">
-                                <h4
-                                    class="text-xs font-bold text-gray-400 uppercase tracking-wide border-b border-gray-100 pb-1">
-                                    时效控制 (消息数)</h4>
-                                <div class="grid grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="block text-[10px] text-gray-400 mb-1">持续 (Sticky)</label>
-                                        <input type="number" v-model.number="editingWorldInfo.data.sticky" min="0"
-                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-gray-400 mb-1">冷却 (Cooldown)</label>
-                                        <input type="number" v-model.number="editingWorldInfo.data.cooldown" min="0"
-                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] text-gray-400 mb-1">延迟 (Delay)</label>
-                                        <input type="number" v-model.number="editingWorldInfo.data.delay" min="0"
-                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center">
-                                    </div>
-                                </div>
-                            </div>
 
                             <!-- Recursion & Scan -->
                             <div class="space-y-3">
