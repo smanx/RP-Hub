@@ -333,7 +333,7 @@ self.addEventListener('message', (event) => {
 
 def generate_update_checker(version: str) -> str:
     """生成 PWA 自动更新检测脚本"""
-    script_part1 = '''
+    script = r'''
     <!-- PWA 自动更新检测 -->
     <script>
     const APP_VERSION = 'VERSION_PLACEHOLDER';
@@ -342,14 +342,12 @@ def generate_update_checker(version: str) -> str:
     let registration = null;
     let updateFound = false;
     
-    // 注册 Service Worker
     if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js")
             .then(reg => {
                 console.log('[PWA] ServiceWorker registration successful');
                 registration = reg;
                 
-                // 监听更新事件
                 reg.addEventListener('updatefound', () => {
                     console.log('[PWA] New update found!');
                     updateFound = true;
@@ -358,13 +356,11 @@ def generate_update_checker(version: str) -> str:
                     newWorker.addEventListener('statechange', () => {
                         console.log('[PWA] ServiceWorker state:', newWorker.state);
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            // 有新版本可用，显示更新提示
                             showUpdateNotification();
                         }
                     });
                 });
                 
-                // 定期检查更新（每小时）
                 setInterval(() => {
                     console.log('[PWA] Checking for updates...');
                     reg.update().catch(err => {
@@ -372,7 +368,6 @@ def generate_update_checker(version: str) -> str:
                     });
                 }, 60 * 60 * 1000);
                 
-                // 立即检查一次更新
                 setTimeout(() => {
                     reg.update().catch(err => {
                         console.log('[PWA] Initial update check failed:', err);
@@ -383,81 +378,27 @@ def generate_update_checker(version: str) -> str:
                 console.log('[PWA] ServiceWorker registration failed:', err);
             });
         
-        // 监听 controllerchange 事件（Service Worker 已更新）
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             console.log('[PWA] Controller changed, reloading...');
             if (updateFound) {
-                // 自动刷新页面以使用新版本
                 window.location.reload();
             }
         });
     }
     
-    // 显示更新通知
     function showUpdateNotification() {
-        // 创建通知元素
         const notification = document.createElement('div');
-        notification.style.cssText = '
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-            color: white;
-            padding: 16px 24px;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            z-index: 9999;
-            animation: slideUp 0.3s ease-out;
-            max-width: 320px;
-        ';
+        notification.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:white;padding:16px 24px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:9999;animation:slideUp 0.3s ease-out;max-width:320px;';
         
-        notification.innerHTML = '
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="10 6 16 12 10 18"></polyline>
-                </svg>
-                <strong>发现新版本！</strong>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button id="updateNow" style="
-                    background: white;
-                    color: #1d4ed8;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    flex: 1;
-                ">立即更新</button>
-                <button id="laterBtn" style="
-                    background: rgba(255,255,255,0.2);
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 6px;
-                    cursor: pointer;
-                ">稍后</button>
-            </div>
-        ';
+        const inner = '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="10 6 16 12 10 18"></polyline></svg><strong>发现新版本！</strong></div><div style="display:flex;gap:8px;"><button id="updateNow" style="background:white;color:#1d4ed8;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;flex:1;">立即更新</button><button id="laterBtn" style="background:rgba(255,255,255,0.2);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">稍后</button></div>';
+        notification.innerHTML = inner;
         
-        // 添加动画样式
         const style = document.createElement('style');
-        style.textContent = '
-            @keyframes slideUp {
-                from { transform: translateY(100px); opacity: 0; }
-                to { transform: translateY(0); opacity: 1; }
-            }
-            @keyframes slideDown {
-                from { transform: translateY(0); opacity: 1; }
-                to { transform: translateY(100px); opacity: 0; }
-            }
-        ';
+        style.textContent = '@keyframes slideUp{from{transform:translateY(100px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes slideDown{from{transform:translateY(0);opacity:1}to{transform:translateY(100px);opacity:0}}';
         document.head.appendChild(style);
         
         document.body.appendChild(notification);
         
-        // 按钮事件
         document.getElementById('updateNow').addEventListener('click', () => {
             if (registration && registration.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -473,7 +414,7 @@ def generate_update_checker(version: str) -> str:
     }
     </script>
 '''
-    return script_part1.replace('VERSION_PLACEHOLDER', version)
+    return script.replace('VERSION_PLACEHOLDER', version)
 
 
 def calculate_build_version(resource_map: dict) -> str:
@@ -521,8 +462,8 @@ def main():
         ),
         (
             [
-                "https://unpkg.com/vue@3/dist/vue.global.prod.js",
-                "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js",
+                "https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js",
+                "https://unpkg.com/vue@3.4.21/dist/vue.global.prod.js",
             ], 
             libs_dir / "vue.global.prod.js", 
             "vue.global.prod.js",
@@ -530,8 +471,8 @@ def main():
         ),
         (
             [
-                "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
-                "https://unpkg.com/marked/marked.min.js",
+                "https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js",
+                "https://unpkg.com/marked@12.0.0/marked.min.js",
             ], 
             libs_dir / "marked.min.js", 
             "marked.min.js",
@@ -548,8 +489,8 @@ def main():
         ),
         (
             [
-                "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js",
-                "https://unpkg.com/sortablejs@latest/Sortable.min.js",
+                "https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js",
+                "https://unpkg.com/sortablejs@1.15.2/Sortable.min.js",
             ], 
             libs_dir / "Sortable.min.js", 
             "Sortable.min.js",
