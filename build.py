@@ -102,6 +102,25 @@ def replace_in_file(file_path: str, replacements: dict) -> None:
         f.write(content)
 
 
+def replace_domain_in_files(directory: Path, old_domain: str, new_domain: str) -> None:
+    """递归替换目录中所有文件的域名"""
+    file_extensions = ['.html', '.css', '.js', '.json', '.md', '.txt']
+    
+    for file_path in directory.rglob('*'):
+        if file_path.is_file() and any(file_path.name.lower().endswith(ext) for ext in file_extensions):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                if old_domain in content:
+                    new_content = content.replace(old_domain, new_domain)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(new_content)
+                    print(f"    → 替换: {file_path.relative_to(directory.parent)}")
+            except Exception as e:
+                print_warning(f"    ⚠ 跳过文件 {file_path}: {e}")
+
+
 def generate_manifest_json(output_path: str, icon_path: str) -> None:
     """生成 manifest.json 文件"""
     manifest_content = '''{
@@ -449,6 +468,10 @@ def main():
     shutil.copytree(script_dir / "character", build_dir / "character", dirs_exist_ok=True)
     shutil.copytree(script_dir / "assets", build_dir / "assets", dirs_exist_ok=True)
     print_success("  ✓ 项目文件复制完成")
+    
+    print_info("替换域名...")
+    replace_domain_in_files(build_dir, "rphforum.zeabur.app", "rphforum.good.hidns.vip")
+    print_success("  ✓ 域名替换完成")
     
     files_to_download = [
         (
