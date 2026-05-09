@@ -150,7 +150,13 @@ def generate_sw_js(output_path: str, version: str, cache_urls: list) -> None:
     sw_content = '''const CACHE_NAME = 'rp-hub-VERSION';
 const urlsToCache = CACHE_URLS;
 
-// 从旧缓存中复制未变化的资源
+const HTML_FILES = ['/', '/index.html', '/character/index.html'];
+
+function isHtmlFile(pathname) {
+    return HTML_FILES.some(html => pathname === html || pathname.endsWith('/index.html') || pathname === '/');
+}
+
+// 从旧缓存中复制未变化的资源（排除 HTML 文件）
 async function copyFromOldCache(newCache) {
     const cacheNames = await caches.keys();
     const oldCaches = cacheNames.filter(name => name !== CACHE_NAME && name.startsWith('rp-hub-'));
@@ -163,6 +169,12 @@ async function copyFromOldCache(newCache) {
         
         for (const request of oldKeys) {
             const requestUrl = new URL(request.url);
+            
+            if (isHtmlFile(requestUrl.pathname)) {
+                console.log('[ServiceWorker] Skipping HTML file (will fetch fresh):', requestUrl.pathname);
+                continue;
+            }
+            
             const relativePath = requestUrl.pathname.substring(requestUrl.pathname.lastIndexOf('/') + 1);
             
             const urlInNewCache = urlsToCache.some(url => {
@@ -287,6 +299,30 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
+    const pathname = requestUrl.pathname;
+    
+    // HTML 文件使用 network-first 策略，确保总是获取最新版本
+    if (isHtmlFile(pathname)) {
+        console.log('[ServiceWorker] HTML file, using network-first:', pathname);
+        event.respondWith(
+            fetch(request)
+                .then((networkResponse) => {
+                    if (networkResponse && networkResponse.status === 200) {
+                        const responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(request, responseToCache);
+                        });
+                    }
+                    return networkResponse;
+                })
+                .catch(() => {
+                    console.log('[ServiceWorker] Network failed, falling back to cache:', pathname);
+                    return caches.match(request, { ignoreSearch: true });
+                })
+        );
+        return;
+    }
+    
     // 检查是否在我们的预缓存列表中
     const isInPrecacheList = urlsToCache.some(url => {
         let cacheUrl;
@@ -299,10 +335,8 @@ self.addEventListener('fetch', (event) => {
     });
     
     // 检查是否是我们项目目录下的静态文件
-    const pathname = requestUrl.pathname;
     const isProjectResource = 
         pathname.includes('/assets/') || 
-        pathname.endsWith('/index.html') || 
         pathname.endsWith('/manifest.json') ||
         pathname.endsWith('/sw.js');
     
@@ -676,11 +710,22 @@ def main():
             resource_map[filename] = Path(hashed_path).name
             print_success(f"  ✓ {filename} -> {resource_map[filename]} (hash: {file_hash})")
     
+    print_info("计算 index.html hash...")
+    index_html_path = build_dir / "index.html"
+    index_hash = calculate_file_hash(str(index_html_path))
+    resource_map['index.html'] = f"index.{index_hash}.html"
+    print_success(f"  ✓ index.html hash: {index_hash}")
+    
+    print_info("计算 character/index.html hash...")
+    char_html_path = build_dir / "character" / "index.html"
+    char_hash = calculate_file_hash(str(char_html_path))
+    resource_map['character/index.html'] = f"index.{char_hash}.html"
+    print_success(f"  ✓ character/index.html hash: {char_hash}")
+    
     version = calculate_build_version(resource_map)
     print_info(f"\n构建版本号：{version} (基于资源内容计算)\n")
     
     print_info("处理 index.html...")
-    index_html_path = build_dir / "index.html"
     shutil.copy2(index_html_path, index_html_path.with_suffix(".html.bak"))
     
     replacements = {
@@ -722,9 +767,9 @@ def main():
     print_success("  ✓ character/index.html 处理完成")
     
     cache_urls = [
-        "./",
-        "./index.html",
-        "./character/index.html",
+        f"./?v={version}",
+        f"./index.html?v={version}",
+        f"./character/index.html?v={version}",
         f"./assets/css/{resource_map['styles.css']}",
         f"./assets/js/{resource_map['app.js']}",
         f"./assets/js/{resource_map['utils.js']}",
