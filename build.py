@@ -561,7 +561,7 @@ def main():
     print_success("  ✓ 项目文件复制完成")
     
     print_info("替换域名...")
-    replace_domain_in_files(build_dir, "rphforum.zeabur.app", "rphforum.good.hidns.vip")
+    replace_domain_in_files(build_dir, "rphforum.zeabur.app", "rphforum.smanx.xx.kg")
     print_success("  ✓ 域名替换完成")
 
 
