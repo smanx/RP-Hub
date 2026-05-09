@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         卡片图片获取工具
 // @namespace    http://tampermonkey.net/
-// @version      2.2
+// @version      2.3
 // @description  为页面卡片添加获取图片UUID的功能
 // @author       You
 // @match        file:///C:/mydata/codes/RP-Hub/test2.html
@@ -129,8 +129,6 @@
                     const uuidMatch = img.src.match(/\/api\/cards\/([a-f0-9-]{36})\//);
                     if (uuidMatch) {
                         const uuid = uuidMatch[1];
-                        const timestamp = Date.now();
-                        const url = 'https://rps.good.hidns.vip/characters/data/' + uuid + '.png?t=' + timestamp;
                         
                         // 开始下载，按钮显示加载效果
                         cardButton.textContent = '';
@@ -138,12 +136,23 @@
                         cardButton.style.animation = 'spin 1s linear infinite';
                         cardButton.innerHTML = '<svg style="width: 18px; height: 18px; fill: none; stroke: white; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><circle cx="9" cy="9" r="7" opacity="0.25"></circle><path d="M16 9a7 7 0 0 0-7-7" opacity="0.75"></path></svg>';
                         
-                        // 下载图片为File对象
-                        fetch(url)
-                            .then(function(response) { return response.blob(); })
-                            .then(function(blob) {
-                                const file = new File([blob], uuid + '.png', { type: blob.type });
-                                const message = { type: 'action', data: { uuid: uuid, url: url, file: file } };
+                        // 获取角色数据
+                        fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid)
+                            .then(function(response) { return response.json(); })
+                            .then(function(cardData) {
+                                // 从base64转换为File
+                                const avatarUrl = cardData.avatar_url;
+                                const base64Data = avatarUrl.split(',')[1];
+                                const mimeType = avatarUrl.split(';')[0].split(':')[1];
+                                const binaryString = atob(base64Data);
+                                const bytes = new Uint8Array(binaryString.length);
+                                for (let i = 0; i < binaryString.length; i++) {
+                                    bytes[i] = binaryString.charCodeAt(i);
+                                }
+                                const blob = new Blob([bytes], { type: mimeType });
+                                const file = new File([blob], uuid + '.png', { type: mimeType });
+                                
+                                const message = { type: 'action', data: { uuid: uuid, cardData: cardData, file: file } };
                                 console.log('postMessage参数:', message);
                                 window.parent.postMessage(message, '*');
                                 
@@ -162,8 +171,8 @@
                                 }, 2000);
                             })
                             .catch(function(error) {
-                                console.error('下载图片失败:', error);
-                                const message = { type: 'error', data: { message: '下载图片失败' } };
+                                console.error('获取角色数据失败:', error);
+                                const message = { type: 'error', data: { message: '获取角色数据失败' } };
                                 console.log('error:', message);
                                 
                                 // 下载失败，按钮显示红色
@@ -198,7 +207,7 @@
         });
         
         const message = { type: 'info', data: { message: '已为 ' + cards.length + ' 个卡片添加按钮！' } };
-        console.log('message:', message);
+        console.log('card:', message);
     }
 
     // 等待页面加载完成后执行
