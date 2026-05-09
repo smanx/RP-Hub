@@ -8,6 +8,8 @@ RP-Hub 构建脚本
 
 import os
 import sys
+import time
+import hashlib
 import shutil
 import urllib.request
 from pathlib import Path
@@ -43,8 +45,25 @@ def print_error(message: str) -> None:
     print(f"{Colors.RED}{message}{Colors.ENDC}")
 
 
-def download_file(urls: list, dest_path: str, name: str) -> bool:
-    """下载文件到指定路径，支持多个备用源"""
+def calculate_file_hash(file_path: str, length: int = 8) -> str:
+    """计算文件的 hash 值"""
+    hash_obj = hashlib.sha256()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
+            hash_obj.update(chunk)
+    return hash_obj.hexdigest()[:length]
+
+
+def get_hashed_filename(file_path: str) -> tuple:
+    """获取包含 hash 的文件名"""
+    path = Path(file_path)
+    file_hash = calculate_file_hash(str(path))
+    new_name = f"{path.stem}.{file_hash}{path.suffix}"
+    return str(path.parent / new_name), file_hash
+
+
+def download_file(urls: list, dest_path: str, name: str) -> str:
+    """下载文件到指定路径，支持多个备用源，返回文件 hash"""
     if isinstance(urls, str):
         urls = [urls]
     
@@ -61,14 +80,15 @@ def download_file(urls: list, dest_path: str, name: str) -> bool:
             
             if os.path.exists(dest_path):
                 size = os.path.getsize(dest_path)
-                print_success(f"    ✓ {name} 下载成功 ({size / 1024:.1f} KB)")
-                return True
+                file_hash = calculate_file_hash(dest_path)
+                print_success(f"    ✓ {name} 下载成功 ({size / 1024:.1f} KB) - hash: {file_hash}")
+                return file_hash
         except Exception as e:
             if i < len(urls) - 1:
                 print_warning(f"    备用源 {i+1} 失败，尝试下一个...")
             else:
                 print_error(f"    ✗ {name} 下载失败: {e}")
-    return False
+    return ""
 
 
 def replace_in_file(file_path: str, replacements: dict) -> None:
@@ -83,7 +103,7 @@ def replace_in_file(file_path: str, replacements: dict) -> None:
         f.write(content)
 
 
-def generate_manifest_json(output_path: str) -> None:
+def generate_manifest_json(output_path: str, icon_path: str) -> None:
     """生成 manifest.json 文件"""
     manifest_content = '''{
   "name": "Roleplay Hub",
@@ -95,64 +115,149 @@ def generate_manifest_json(output_path: str) -> None:
   "theme_color": "#1f2937",
   "icons": [
     {
-      "src": "assets/icon.svg",
+      "src": "ICON_PATH",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]
-}'''
+}'''.replace("ICON_PATH", icon_path)
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(manifest_content)
     print_success("  ✓ manifest.json 生成成功")
 
 
-def generate_sw_js(output_path: str) -> None:
+def generate_sw_js(output_path: str, version: str, cache_urls: list) -> None:
     """生成 Service Worker 文件"""
-    sw_content = '''const CACHE_NAME = 'rp-hub-v2';
-const urlsToCache = [
-  './',
-  './index.html',
-  './character/index.html',
-  './assets/css/styles.css',
-  './assets/js/app.js',
-  './assets/js/utils.js',
-  './assets/libs/tailwindcss.js',
-  './assets/libs/vue.global.prod.js',
-  './assets/libs/marked.min.js',
-  './assets/libs/purify.min.js',
-  './assets/libs/Sortable.min.js',
-  './assets/libs/daisyui.min.css',
-  './assets/libs/localforage.min.js',
-  './assets/icon.svg',
-  './manifest.json'
-];
+    sw_content = '''const CACHE_NAME = 'rp-hub-VERSION';
+const urlsToCache = CACHE_URLS;
 
+// 从旧缓存中复制未变化的资源
+async function copyFromOldCache(newCache) {
+  const cacheNames = await caches.keys();
+  const oldCaches = cacheNames.filter(name => name !== CACHE_NAME && name.startsWith('rp-hub-'));
+  
+  let copiedCount = 0;
+  
+  for (const oldCacheName of oldCaches) {
+    const oldCache = await caches.open(oldCacheName);
+    const oldKeys = await oldCache.keys();
+    
+    for (const request of oldKeys) {
+      const requestUrl = new URL(request.url);
+      // 获取请求的相对路径
+      const relativePath = requestUrl.pathname.substring(requestUrl.pathname.lastIndexOf('/') + 1);
+      
+      // 检查这个 URL 是否在新的缓存列表中
+      const urlInNewCache = urlsToCache.some(url => {
+        const urlPath = url.split('?')[0];
+        const urlFilename = urlPath.substring(urlPath.lastIndexOf('/') + 1);
+        return urlFilename === relativePath;
+      });
+      
+      if (urlInNewCache) {
+        try {
+          const response = await oldCache.match(request);
+          if (response) {
+            await newCache.put(request, response.clone());
+            copiedCount++;
+            console.log('[ServiceWorker] Copied from old cache:', requestUrl.pathname);
+          }
+        } catch (e) {
+          console.log('[ServiceWorker] Failed to copy:', requestUrl.pathname, e);
+        }
+      }
+    }
+  }
+  
+  return copiedCount;
+}
+
+// 安装阶段：缓存所有资源
 self.addEventListener('install', (event) => {
+  console.log('[ServiceWorker] Installing new version:', 'VERSION');
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'no-cache' })));
+      .then(async (newCache) => {
+        console.log('[ServiceWorker] Checking old caches for reusable resources...');
+        const copiedCount = await copyFromOldCache(newCache);
+        console.log('[ServiceWorker] Copied', copiedCount, 'resources from old cache');
+        
+        // 获取新缓存中已有的请求
+        const cachedKeys = await newCache.keys();
+        const cachedUrls = new Set(cachedKeys.map(req => {
+          const url = new URL(req.url);
+          return url.pathname;
+        }));
+        
+        // 只下载缓存中没有的资源
+        const urlsToDownload = [];
+        for (const url of urlsToCache) {
+          // 构建完整 URL 用于比较
+          let fullUrl;
+          if (url.startsWith('http')) {
+            fullUrl = new URL(url);
+          } else {
+            fullUrl = new URL(url, self.location.href);
+          }
+          
+          if (!cachedUrls.has(fullUrl.pathname)) {
+            urlsToDownload.push(url);
+          } else {
+            console.log('[ServiceWorker] Skipping (already in cache):', url);
+          }
+        }
+        
+        console.log('[ServiceWorker] Need to download', urlsToDownload.length, 'new resources');
+        
+        if (urlsToDownload.length > 0) {
+          return Promise.all(
+            urlsToDownload.map(url => {
+              const request = new Request(url, {
+                cache: 'reload',
+                mode: 'no-cors'
+              });
+              return fetch(request).then(response => {
+                if (response && response.ok) {
+                  newCache.put(request, response.clone());
+                  console.log('[ServiceWorker] Downloaded:', url);
+                }
+                return response;
+              }).catch(e => {
+                console.log('[ServiceWorker] Failed to download:', url, e);
+              });
+            })
+          );
+        }
+      })
+      .then(() => {
+        console.log('[ServiceWorker] Skip waiting for activation');
+        return self.skipWaiting(); // 立即激活新的 Service Worker
       })
   );
 });
 
+// 激活阶段：清理旧缓存
 self.addEventListener('activate', (event) => {
+  console.log('[ServiceWorker] Activating new version:', 'VERSION');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
+          if (cacheName !== CACHE_NAME && cacheName.startsWith('rp-hub-')) {
+            console.log('[ServiceWorker] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      console.log('[ServiceWorker] Claiming all clients');
+      return self.clients.claim(); // 立即接管所有打开的页面
     })
   );
 });
 
+// 拦截请求，优先使用缓存，同时在后台更新
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
   
@@ -161,40 +266,219 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // 策略：先从缓存返回，然后在后台更新
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true })
-      .then((response) => {
-        // 如果缓存中有，直接返回
-        if (response) {
-          return response;
+      .then((cachedResponse) => {
+        // 如果有缓存，先返回缓存
+        if (cachedResponse) {
+          // 后台更新缓存
+          fetch(event.request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, networkResponse.clone());
+              });
+            }
+          }).catch(() => {
+            // 网络请求失败，继续使用缓存
+          });
+          return cachedResponse;
         }
-        // 否则从网络获取
-        return fetch(event.request).then((response) => {
-          if (!response || response.status !== 200) {
-            return response;
+        
+        // 没有缓存，从网络获取
+        return fetch(event.request).then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200) {
+            return networkResponse;
           }
-          // 克隆响应
-          let responseToCache = response.clone();
+          // 克隆响应并缓存
+          let responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME)
             .then((cache) => {
               cache.put(event.request, responseToCache);
             });
-          return response;
+          return networkResponse;
         }).catch(() => {
+          // 离线时返回缓存（如果有）
           return caches.match(event.request, { ignoreSearch: true });
         });
       })
   );
+});
+
+// 监听来自客户端的消息
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[ServiceWorker] Received SKIP_WAITING message');
+    self.skipWaiting();
+  }
 });'''
+    sw_content = sw_content.replace('VERSION', version)
+    sw_content = sw_content.replace('CACHE_URLS', str(cache_urls))
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(sw_content)
-    print_success("  ✓ sw.js 生成成功")
+    print_success(f"  ✓ sw.js 生成成功 (版本: {version})")
 
+
+def generate_update_checker(version: str) -> str:
+    """生成 PWA 自动更新检测脚本"""
+    script_part1 = '''
+    <!-- PWA 自动更新检测 -->
+    <script>
+    const APP_VERSION = 'VERSION_PLACEHOLDER';
+    console.log('[PWA] App version:', APP_VERSION);
+    
+    let registration = null;
+    let updateFound = false;
+    
+    // 注册 Service Worker
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js")
+            .then(reg => {
+                console.log('[PWA] ServiceWorker registration successful');
+                registration = reg;
+                
+                // 监听更新事件
+                reg.addEventListener('updatefound', () => {
+                    console.log('[PWA] New update found!');
+                    updateFound = true;
+                    const newWorker = reg.installing;
+                    
+                    newWorker.addEventListener('statechange', () => {
+                        console.log('[PWA] ServiceWorker state:', newWorker.state);
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // 有新版本可用，显示更新提示
+                            showUpdateNotification();
+                        }
+                    });
+                });
+                
+                // 定期检查更新（每小时）
+                setInterval(() => {
+                    console.log('[PWA] Checking for updates...');
+                    reg.update().catch(err => {
+                        console.log('[PWA] Update check failed:', err);
+                    });
+                }, 60 * 60 * 1000);
+                
+                // 立即检查一次更新
+                setTimeout(() => {
+                    reg.update().catch(err => {
+                        console.log('[PWA] Initial update check failed:', err);
+                    });
+                }, 2000);
+            })
+            .catch(err => {
+                console.log('[PWA] ServiceWorker registration failed:', err);
+            });
+        
+        // 监听 controllerchange 事件（Service Worker 已更新）
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            console.log('[PWA] Controller changed, reloading...');
+            if (updateFound) {
+                // 自动刷新页面以使用新版本
+                window.location.reload();
+            }
+        });
+    }
+    
+    // 显示更新通知
+    function showUpdateNotification() {
+        // 创建通知元素
+        const notification = document.createElement('div');
+        notification.style.cssText = '
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 9999;
+            animation: slideUp 0.3s ease-out;
+            max-width: 320px;
+        ';
+        
+        notification.innerHTML = '
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="10 6 16 12 10 18"></polyline>
+                </svg>
+                <strong>发现新版本！</strong>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="updateNow" style="
+                    background: white;
+                    color: #1d4ed8;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    flex: 1;
+                ">立即更新</button>
+                <button id="laterBtn" style="
+                    background: rgba(255,255,255,0.2);
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                ">稍后</button>
+            </div>
+        ';
+        
+        // 添加动画样式
+        const style = document.createElement('style');
+        style.textContent = '
+            @keyframes slideUp {
+                from { transform: translateY(100px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+            @keyframes slideDown {
+                from { transform: translateY(0); opacity: 1; }
+                to { transform: translateY(100px); opacity: 0; }
+            }
+        ';
+        document.head.appendChild(style);
+        
+        document.body.appendChild(notification);
+        
+        // 按钮事件
+        document.getElementById('updateNow').addEventListener('click', () => {
+            if (registration && registration.waiting) {
+                // 发送消息给 waiting 的 Service Worker 让它激活
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            notification.style.animation = 'slideDown 0.3s ease-in forwards';
+            setTimeout(() => notification.remove(), 300);
+        });
+        
+        document.getElementById('laterBtn').addEventListener('click', () => {
+            notification.style.animation = 'slideDown 0.3s ease-in forwards';
+            setTimeout(() => notification.remove(), 300);
+        });
+    }
+    </script>
+'''
+    return script_part1.replace('VERSION_PLACEHOLDER', version)
+
+
+def calculate_build_version(resource_map: dict) -> str:
+    """基于资源 hash 计算构建版本号"""
+    # 将所有 hash 值连接起来，再计算总 hash
+    combined_hashes = sorted(resource_map.values())
+    hash_input = "|".join(combined_hashes)
+    
+    hash_obj = hashlib.sha256()
+    hash_obj.update(hash_input.encode('utf-8'))
+    return hash_obj.hexdigest()[:8]
 
 def main():
     """主函数"""
     print(f"\n{Colors.BOLD}{Colors.CYAN}╔════════════════════════════════════════════════════════════╗{Colors.ENDC}")
-    print(f"{Colors.BOLD}{Colors.CYAN}║          RP-Hub 构建脚本                                    ║{Colors.ENDC}")
+    print(f"{Colors.BOLD}{Colors.CYAN}║          RP-Hub 构建脚本 (Hash 缓存版本)                     ║{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.CYAN}╚════════════════════════════════════════════════════════════╝{Colors.ENDC}\n")
     
     # 设置路径
@@ -212,7 +496,7 @@ def main():
     build_dir.mkdir(exist_ok=True)
     libs_dir.mkdir(parents=True, exist_ok=True)
     
-    # 复制原始文件
+    # 复制原始文件 (先复制，然后处理 hash)
     print_info("复制项目文件...")
     shutil.copy2(script_dir / "index.html", build_dir / "index.html")
     shutil.copytree(script_dir / "character", build_dir / "character", dirs_exist_ok=True)
@@ -226,82 +510,133 @@ def main():
                 "https://cdn.tailwindcss.com/3.4.1",
                 "https://cdn.tailwindcss.com",
             ], 
-            libs_dir / "tailwindcss.js", "TailwindCSS"
+            libs_dir / "tailwindcss.js", 
+            "tailwindcss.js",
+            "TailwindCSS"
         ),
         (
             [
                 "https://unpkg.com/vue@3/dist/vue.global.prod.js",
                 "https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js",
             ], 
-            libs_dir / "vue.global.prod.js", "Vue.js"
+            libs_dir / "vue.global.prod.js", 
+            "vue.global.prod.js",
+            "Vue.js"
         ),
         (
             [
                 "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
                 "https://unpkg.com/marked/marked.min.js",
             ], 
-            libs_dir / "marked.min.js", "Marked.js"
+            libs_dir / "marked.min.js", 
+            "marked.min.js",
+            "Marked.js"
         ),
         (
             [
                 "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js",
                 "https://unpkg.com/dompurify@3.0.6/dist/purify.min.js",
             ], 
-            libs_dir / "purify.min.js", "DOMPurify"
+            libs_dir / "purify.min.js", 
+            "purify.min.js",
+            "DOMPurify"
         ),
         (
             [
                 "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js",
                 "https://unpkg.com/sortablejs@latest/Sortable.min.js",
             ], 
-            libs_dir / "Sortable.min.js", "Sortable.js"
+            libs_dir / "Sortable.min.js", 
+            "Sortable.min.js",
+            "Sortable.js"
         ),
         (
             [
                 "https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css",
                 "https://unpkg.com/daisyui@4.7.2/dist/full.min.css",
             ], 
-            libs_dir / "daisyui.min.css", "DaisyUI"
+            libs_dir / "daisyui.min.css", 
+            "daisyui.min.css",
+            "DaisyUI"
         ),
         (
             [
                 "https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js",
                 "https://unpkg.com/localforage@1.10.0/dist/localforage.min.js",
             ], 
-            libs_dir / "localforage.min.js", "LocalForage"
+            libs_dir / "localforage.min.js", 
+            "localforage.min.js",
+            "LocalForage"
         ),
         (
             [
                 "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937",
             ], 
-            build_dir / "assets" / "icon.svg", "PWA 图标"
+            build_dir / "assets" / "icon.svg", 
+            "icon.svg",
+            "PWA 图标"
         ),
     ]
     
     # 下载文件
     print_info("\n下载远程资源...")
     all_success = True
-    for url, dest, name in files_to_download:
-        if not download_file(url, str(dest), name):
+    
+    # 用于存储资源映射
+    resource_map = {}
+    
+    for urls, dest_path, filename, name in files_to_download:
+        file_hash = download_file(urls, str(dest_path), name)
+        if file_hash:
+            # 重命名文件，添加 hash
+            hashed_path, file_hash = get_hashed_filename(str(dest_path))
+            shutil.move(str(dest_path), hashed_path)
+            
+            # 存储映射关系
+            resource_map[filename] = Path(hashed_path).name
+            print_success(f"    ✓ 已重命名为 {Path(hashed_path).name}")
+        else:
             all_success = False
     
     if not all_success:
-        print_error("\n部分文件下载失败，继续构建...\n")
+        print_warning("\n部分文件下载失败，继续构建...\n")
     else:
         print_success("\n所有资源下载成功！\n")
     
-    # 修改 index.html
-    print_info("处理 index.html...")
+    # 处理本地资源文件 (app.js, utils.js, styles.css)
+    print_info("处理本地资源文件...")
+    local_files = [
+        (build_dir / "assets" / "css" / "styles.css", "styles.css"),
+        (build_dir / "assets" / "js" / "app.js", "app.js"),
+        (build_dir / "assets" / "js" / "utils.js", "utils.js"),
+    ]
+    
+    for file_path, filename in local_files:
+        if file_path.exists():
+            hashed_path, file_hash = get_hashed_filename(str(file_path))
+            shutil.move(str(file_path), hashed_path)
+            resource_map[filename] = Path(hashed_path).name
+            print_success(f"  ✓ {filename} -> {resource_map[filename]} (hash: {file_hash})")
+    
+    # 基于所有资源 hash 计算构建版本号
+    version = calculate_build_version(resource_map)
+    print_info(f"\n构建版本号：{version} (基于资源内容计算)\n")
+    
+    # 修改 index.html - 更新所有资源引用
+    print_info("\n处理 index.html...")
     index_html_path = build_dir / "index.html"
     shutil.copy2(index_html_path, index_html_path.with_suffix(".html.bak"))
     
-    # 替换 CDN 链接
+    # 构建替换字典（使用相对路径）
     replacements = {
-        "https://cdn.tailwindcss.com": "assets/libs/tailwindcss.js",
-        "https://unpkg.com/vue@3/dist/vue.global.prod.js": "assets/libs/vue.global.prod.js",
-        "https://cdn.jsdelivr.net/npm/marked/marked.min.js": "assets/libs/marked.min.js",
-        "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js": "assets/libs/purify.min.js",
-        "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js": "assets/libs/Sortable.min.js",
+        "https://cdn.tailwindcss.com": f"./assets/libs/{resource_map['tailwindcss.js']}",
+        "https://unpkg.com/vue@3/dist/vue.global.prod.js": f"./assets/libs/{resource_map['vue.global.prod.js']}",
+        "https://cdn.jsdelivr.net/npm/marked/marked.min.js": f"./assets/libs/{resource_map['marked.min.js']}",
+        "https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js": f"./assets/libs/{resource_map['purify.min.js']}",
+        "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js": f"./assets/libs/{resource_map['Sortable.min.js']}",
+        "assets/js/app.js": f"./assets/js/{resource_map['app.js']}",
+        "assets/js/utils.js": f"./assets/js/{resource_map['utils.js']}",
+        "assets/css/styles.css": f"./assets/css/{resource_map['styles.css']}",
     }
     replace_in_file(str(index_html_path), replacements)
     
@@ -309,11 +644,12 @@ def main():
     with open(index_html_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    pwa_tags = '<link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="./assets/icon.svg">'
+    pwa_tags = f'<link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="./assets/{resource_map["icon.svg"]}">'
     content = content.replace("</title>", f"</title>{pwa_tags}")
     
-    sw_register = '''    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").then(function(registration){console.log("ServiceWorker registration successful");}).catch(function(err){console.log("ServiceWorker registration failed: ", err);});}</script></body>'''
-    content = content.replace("</body>", sw_register)
+    # 添加更新检测脚本
+    sw_register = generate_update_checker(version)
+    content = content.replace("</body>", sw_register + "</body>")
     
     with open(index_html_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -325,18 +661,37 @@ def main():
     shutil.copy2(char_html_path, char_html_path.with_suffix(".html.bak"))
     
     char_replacements = {
-        "https://cdn.tailwindcss.com": "../assets/libs/tailwindcss.js",
-        "https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css": "../assets/libs/daisyui.min.css",
-        "https://unpkg.com/vue@3/dist/vue.global.prod.js": "../assets/libs/vue.global.prod.js",
-        "https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js": "../assets/libs/localforage.min.js",
+        "https://cdn.tailwindcss.com": f"../assets/libs/{resource_map['tailwindcss.js']}",
+        "https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css": f"../assets/libs/{resource_map['daisyui.min.css']}",
+        "https://unpkg.com/vue@3/dist/vue.global.prod.js": f"../assets/libs/{resource_map['vue.global.prod.js']}",
+        "https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js": f"../assets/libs/{resource_map['localforage.min.js']}",
     }
     replace_in_file(str(char_html_path), char_replacements)
     print_success("  ✓ character/index.html 处理完成")
     
-    # 生成 PWA 文件
-    print_info("生成 PWA 支持文件...")
-    generate_manifest_json(str(build_dir / "manifest.json"))
-    generate_sw_js(str(build_dir / "sw.js"))
+    # 构建缓存 URL 列表
+    cache_urls = [
+        "./",
+        "./index.html",
+        "./character/index.html",
+        f"./assets/css/{resource_map['styles.css']}",
+        f"./assets/js/{resource_map['app.js']}",
+        f"./assets/js/{resource_map['utils.js']}",
+        f"./assets/libs/{resource_map['tailwindcss.js']}",
+        f"./assets/libs/{resource_map['vue.global.prod.js']}",
+        f"./assets/libs/{resource_map['marked.min.js']}",
+        f"./assets/libs/{resource_map['purify.min.js']}",
+        f"./assets/libs/{resource_map['Sortable.min.js']}",
+        f"./assets/libs/{resource_map['daisyui.min.css']}",
+        f"./assets/libs/{resource_map['localforage.min.js']}",
+        f"./assets/{resource_map['icon.svg']}",
+        "./manifest.json",
+    ]
+    
+    # 生成 PWA 文件（使用正确的相对路径）
+    print_info("\n生成 PWA 支持文件...")
+    generate_manifest_json(str(build_dir / "manifest.json"), f"./assets/{resource_map['icon.svg']}")
+    generate_sw_js(str(build_dir / "sw.js"), version, cache_urls)
     
     # 显示构建结果
     print_info("\n" + "="*60)
@@ -344,10 +699,23 @@ def main():
     print_info("="*60 + "\n")
     
     print(f"{Colors.BOLD}构建目录：{Colors.ENDC}{build_dir}\n")
-    print(f"{Colors.BOLD}已下载的库文件：{Colors.ENDC}")
-    for f in libs_dir.iterdir():
-        size = os.path.getsize(f) / 1024
-        print(f"  - {f.name} ({size:.1f} KB)")
+    print(f"{Colors.BOLD}版本号：{Colors.ENDC}{version} (基于资源内容计算)\n")
+    print(f"{Colors.BOLD}Hash 资源映射：{Colors.ENDC}")
+    for orig, hashed in sorted(resource_map.items()):
+        print(f"  {orig:20s} -> {hashed}")
+    
+    print("\n" + "="*60)
+    print(f"{Colors.BOLD}{Colors.YELLOW}PWA 功能：{Colors.ENDC}")
+    print("="*60)
+    print("✓ 基于内容的 Hash: 文件名包含内容 hash，内容不变则 hash 不变")
+    print("✓ 智能版本管理: 版本号基于资源内容，只有内容变化才更新")
+    print("✓ 高效的缓存策略: 只有 hash 变化的资源才会重新下载")
+    print("✓ 避免无效更新: 资源不变时，即使重新构建也不会触发更新")
+    print("✓ 增量更新: 只从旧缓存复制未变化的资源，避免全量重下载")
+    print("✓ 实时更新通知：发现新版本时显示漂亮的更新提示")
+    print("✓ 一键更新：用户点击即可立即更新")
+    print("✓ 定期检查：每小时自动检查更新")
+    print("✓ 智能缓存：优先使用缓存，后台更新资源")
     
     print("\n" + "="*60)
     print(f"{Colors.BOLD}{Colors.YELLOW}测试说明：{Colors.ENDC}")
@@ -357,7 +725,7 @@ def main():
     print(f"   - Python: cd {build_dir} && python3 -m http.server 8000")
     print("   - Node.js: npx http-server -p 8000")
     print("3. 在浏览器中访问 http://localhost:8000")
-    print("4. 测试 PWA 功能：浏览器地址栏应该有安装按钮\n")
+    print("4. 重新运行 build.py 生成新版本，浏览器会收到更新提示\n")
     
     return 0
 
