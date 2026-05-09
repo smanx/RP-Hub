@@ -445,6 +445,97 @@ def calculate_build_version(resource_map: dict) -> str:
     return hash_obj.hexdigest()[:8]
 
 
+def inject_vue_app_expose(app_js_path: str) -> None:
+    """在 app.js 中注入 Vue app 实例暴露代码"""
+    with open(app_js_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    original_pattern = "}).mount('#app');"
+    
+    if original_pattern in content:
+        modified_content = content.replace(
+            original_pattern, 
+            "}); window.__VUE_APP__ = app.mount('#app');"
+        )
+        modified_content = modified_content.replace(
+            "createApp({", 
+            "var app = createApp({"
+        )
+        with open(app_js_path, 'w', encoding='utf-8') as f:
+            f.write(modified_content)
+        print_success("  ✓ Vue app 实例暴露代码注入成功")
+    else:
+        print_warning("  ⚠ 未找到 mount('#app') 调用，尝试追加注入代码")
+        inject_code = '''
+
+// === 自动注入代码 (由 build.py 添加) ===
+(function() {
+    function exposeVueApp() {
+        var appElement = document.querySelector('#app');
+        if (!appElement) return false;
+        
+        var vueApp = appElement.__vue_app__;
+        if (vueApp) {
+            if (vueApp._instance && vueApp._instance.proxy) {
+                window.__VUE_APP__ = vueApp._instance.proxy;
+                console.log('[RP-Hub] Vue app 已暴露');
+                return true;
+            }
+            var container = vueApp._container;
+            if (container && container.__vueParentComponent) {
+                window.__VUE_APP__ = container.__vueParentComponent.proxy;
+                console.log('[RP-Hub] Vue app 已暴露 (通过 container)');
+                return true;
+            }
+        }
+        if (appElement.__vueParentComponent) {
+            window.__VUE_APP__ = appElement.__vueParentComponent.proxy;
+            console.log('[RP-Hub] Vue app 已暴露 (通过 __vueParentComponent)');
+            return true;
+        }
+        return false;
+    }
+    
+    if (!exposeVueApp()) {
+        for (var i = 1; i <= 10; i++) {
+            (function(delay) {
+                setTimeout(function() {
+                    if (!window.__VUE_APP__) {
+                        exposeVueApp();
+                    }
+                }, delay * 100);
+            })(i);
+        }
+    }
+})();
+// === 注入代码结束 ===
+'''
+        with open(app_js_path, 'a', encoding='utf-8') as f:
+            f.write(inject_code)
+        print_success("  ✓ Vue app 实例暴露代码注入成功 (追加模式)")
+    
+    message_listener_code = '''
+
+// === 消息监听注入代码 (由 build.py 添加) ===
+window.addEventListener('message', function(e) {
+    console.log('[RP-Hub] 收到消息：', e);
+    if (e.data && e.data.data && e.data.data.file && window.__VUE_APP__) {
+        var mockEvent = {
+            target: {
+                files: [e.data.data.file],
+                value: e.data.data.url || ''
+            }
+        };
+        window.__VUE_APP__.importCharacter(mockEvent);
+    }
+});
+// === 消息监听代码结束 ===
+'''
+    with open(app_js_path, 'a', encoding='utf-8') as f:
+        f.write(message_listener_code)
+    print_success("  ✓ 消息监听代码注入成功")
+
+
 def main():
     """主函数"""
     print(f"\n{Colors.BOLD}{Colors.CYAN}╔════════════════════════════════════════════════════════════╗{Colors.ENDC}")
@@ -472,6 +563,11 @@ def main():
     print_info("替换域名...")
     replace_domain_in_files(build_dir, "rphforum.zeabur.app", "rphforum.good.hidns.vip")
     print_success("  ✓ 域名替换完成")
+
+
+    print_info("注入 Vue app 实例暴露代码...")
+    app_js_path = build_dir / "assets" / "js" / "app.js"
+    inject_vue_app_expose(str(app_js_path))
     
     files_to_download = [
         (
