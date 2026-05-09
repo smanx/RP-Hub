@@ -70,7 +70,6 @@ def download_file(urls: list, dest_path: str, name: str) -> str:
     print(f"  - 正在下载 {name}...")
     for i, url in enumerate(urls):
         try:
-            # 添加 User-Agent 避免被一些 CDN 阻止
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
@@ -132,41 +131,6 @@ def generate_sw_js(output_path: str, version: str, cache_urls: list) -> None:
     sw_content = '''const CACHE_NAME = 'rp-hub-VERSION';
 const urlsToCache = CACHE_URLS;
 
-// 判断是否是需要缓存的静态资源
-function shouldCacheRequest(request) {
-    // 只缓存 GET 请求
-    if (request.method !== 'GET') {
-        return false;
-    }
-    
-    const requestUrl = new URL(request.url);
-    const pathname = requestUrl.pathname;
-    
-    // 检查是否在预缓存列表中
-    const isInPrecacheList = urlsToCache.some(url => {
-        const cacheUrl = new URL(url, self.location.href);
-        return cacheUrl.pathname === pathname;
-    });
-    
-    if (isInPrecacheList) {
-        return true;
-    }
-    
-    // 检查文件扩展名，只缓存静态资源
-    const staticExtensions = [
-        '.js', '.css', '.html', '.htm',
-        '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
-        '.woff', '.woff2', '.ttf', '.eot',
-        '.json', '.xml'
-    ];
-    
-    const hasStaticExtension = staticExtensions.some(ext => 
-        pathname.toLowerCase().endsWith(ext)
-    );
-    
-    return hasStaticExtension;
-}
-
 // 从旧缓存中复制未变化的资源
 async function copyFromOldCache(newCache) {
     const cacheNames = await caches.keys();
@@ -180,10 +144,8 @@ async function copyFromOldCache(newCache) {
         
         for (const request of oldKeys) {
             const requestUrl = new URL(request.url);
-            // 获取请求的相对路径
             const relativePath = requestUrl.pathname.substring(requestUrl.pathname.lastIndexOf('/') + 1);
             
-            // 检查这个 URL 是否在新的缓存列表中
             const urlInNewCache = urlsToCache.some(url => {
                 const urlPath = url.split('?')[0];
                 const urlFilename = urlPath.substring(urlPath.lastIndexOf('/') + 1);
@@ -218,17 +180,14 @@ self.addEventListener('install', (event) => {
                 const copiedCount = await copyFromOldCache(newCache);
                 console.log('[ServiceWorker] Copied', copiedCount, 'resources from old cache');
                 
-                // 获取新缓存中已有的请求
                 const cachedKeys = await newCache.keys();
                 const cachedUrls = new Set(cachedKeys.map(req => {
                     const url = new URL(req.url);
                     return url.pathname;
                 }));
                 
-                // 只下载缓存中没有的资源
                 const urlsToDownload = [];
                 for (const url of urlsToCache) {
-                    // 构建完整 URL 用于比较
                     let fullUrl;
                     if (url.startsWith('http')) {
                         fullUrl = new URL(url);
@@ -267,7 +226,7 @@ self.addEventListener('install', (event) => {
             })
             .then(() => {
                 console.log('[ServiceWorker] Skip waiting for activation');
-                return self.skipWaiting(); // 立即激活新的 Service Worker
+                return self.skipWaiting();
             })
     );
 });
@@ -287,12 +246,12 @@ self.addEventListener('activate', (event) => {
             );
         }).then(() => {
             console.log('[ServiceWorker] Claiming all clients');
-            return self.clients.claim(); // 立即接管所有打开的页面
+            return self.clients.claim();
         })
     );
 });
 
-// 拦截请求 - 只缓存静态资源
+// 拦截请求 - 只缓存我们的静态资源
 self.addEventListener('fetch', (event) => {
     const request = event.request;
     const requestUrl = new URL(request.url);
@@ -302,54 +261,60 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
-    // 检查是否需要缓存这个请求
-    if (!shouldCacheRequest(request)) {
-        // 不缓存的请求（API、非GET等），直接从网络获取
-        console.log('[ServiceWorker] Bypassing cache:', request.method, requestUrl.pathname);
+    // 只缓存 GET 请求
+    if (request.method !== 'GET') {
+        console.log('[ServiceWorker] Skip non-GET request:', request.method, requestUrl.pathname);
         event.respondWith(fetch(request));
         return;
     }
     
-    // 需要缓存的静态资源 - 使用缓存优先策略
-    event.respondWith(
-        caches.match(request, { ignoreSearch: true })
-            .then((cachedResponse) => {
-                // 如果有缓存，先返回缓存
-                if (cachedResponse) {
-                    console.log('[ServiceWorker] Serving from cache:', requestUrl.pathname);
-                    // 后台更新缓存（静默更新）
-                    fetch(request).then((networkResponse) => {
-                        if (networkResponse && networkResponse.status === 200) {
-                            caches.open(CACHE_NAME).then((cache) => {
-                                cache.put(request, networkResponse.clone());
-                                console.log('[ServiceWorker] Updated cache:', requestUrl.pathname);
-                            });
-                        }
-                    }).catch(() => {
-                        // 网络请求失败，继续使用缓存
-                    });
-                    return cachedResponse;
-                }
-                
-                // 没有缓存，从网络获取并缓存
-                console.log('[ServiceWorker] Fetching from network:', requestUrl.pathname);
-                return fetch(request).then((networkResponse) => {
-                    if (!networkResponse || networkResponse.status !== 200) {
-                        return networkResponse;
+    // 检查是否在我们的预缓存列表中
+    const isInPrecacheList = urlsToCache.some(url => {
+        let cacheUrl;
+        if (url.startsWith('http')) {
+            cacheUrl = new URL(url);
+        } else {
+            cacheUrl = new URL(url, self.location.href);
+        }
+        return cacheUrl.pathname === requestUrl.pathname;
+    });
+    
+    // 检查是否是我们项目目录下的静态文件
+    const pathname = requestUrl.pathname;
+    const isProjectResource = 
+        pathname.includes('/assets/') || 
+        pathname.endsWith('/index.html') || 
+        pathname.endsWith('/manifest.json') ||
+        pathname.endsWith('/sw.js');
+    
+    // 如果是我们的资源，使用缓存策略
+    if (isInPrecacheList || isProjectResource) {
+        event.respondWith(
+            caches.match(request, { ignoreSearch: true })
+                .then((cachedResponse) => {
+                    if (cachedResponse) {
+                        return cachedResponse;
                     }
-                    // 克隆响应并缓存
-                    let responseToCache = networkResponse.clone();
-                    caches.open(CACHE_NAME)
-                        .then((cache) => {
+                    
+                    return fetch(request).then((networkResponse) => {
+                        if (!networkResponse || networkResponse.status !== 200) {
+                            return networkResponse;
+                        }
+                        
+                        const responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
                             cache.put(request, responseToCache);
                         });
-                    return networkResponse;
-                }).catch(() => {
-                    // 离线时返回缓存（如果有）
-                    return caches.match(request, { ignoreSearch: true });
-                });
-            })
-    );
+                        return networkResponse;
+                    }).catch(() => {
+                        return caches.match(request, { ignoreSearch: true });
+                    });
+                })
+        );
+    } else {
+        console.log('[ServiceWorker] Skip cache for:', requestUrl.pathname);
+        event.respondWith(fetch(request));
+    }
 });
 
 // 监听来自客户端的消息
@@ -495,7 +460,6 @@ def generate_update_checker(version: str) -> str:
         // 按钮事件
         document.getElementById('updateNow').addEventListener('click', () => {
             if (registration && registration.waiting) {
-                // 发送消息给 waiting 的 Service Worker 让它激活
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
             }
             notification.style.animation = 'slideDown 0.3s ease-in forwards';
@@ -514,13 +478,12 @@ def generate_update_checker(version: str) -> str:
 
 def calculate_build_version(resource_map: dict) -> str:
     """基于资源 hash 计算构建版本号"""
-    # 将所有 hash 值连接起来，再计算总 hash
     combined_hashes = sorted(resource_map.values())
     hash_input = "|".join(combined_hashes)
-    
     hash_obj = hashlib.sha256()
     hash_obj.update(hash_input.encode('utf-8'))
     return hash_obj.hexdigest()[:8]
+
 
 def main():
     """主函数"""
@@ -528,33 +491,24 @@ def main():
     print(f"{Colors.BOLD}{Colors.CYAN}║          RP-Hub 构建脚本 (Hash 缓存版本)                     ║{Colors.ENDC}")
     print(f"{Colors.BOLD}{Colors.CYAN}╚════════════════════════════════════════════════════════════╝{Colors.ENDC}\n")
     
-    # 设置路径
     script_dir = Path(__file__).parent.absolute()
     build_dir = script_dir / "build"
     libs_dir = build_dir / "assets" / "libs"
     
-    # 清理旧的 build 目录（如果可能）
     if build_dir.exists():
         print_warning("清理旧的 build 目录...")
-        try:
-            shutil.rmtree(build_dir)
-        except (PermissionError, OSError) as e:
-            print_warning(f"无法完全删除 build 目录: {e}")
-            print_warning("将在现有基础上更新文件...")
+        shutil.rmtree(build_dir)
     
-    # 创建目录结构
     print_info("创建构建目录...")
     build_dir.mkdir(exist_ok=True)
     libs_dir.mkdir(parents=True, exist_ok=True)
     
-    # 复制原始文件 (先复制，然后处理 hash)
     print_info("复制项目文件...")
     shutil.copy2(script_dir / "index.html", build_dir / "index.html")
     shutil.copytree(script_dir / "character", build_dir / "character", dirs_exist_ok=True)
     shutil.copytree(script_dir / "assets", build_dir / "assets", dirs_exist_ok=True)
     print_success("  ✓ 项目文件复制完成")
     
-    # 定义要下载的文件，支持多个备用源
     files_to_download = [
         (
             [
@@ -629,27 +583,15 @@ def main():
         ),
     ]
     
-    # 下载文件
     print_info("\n下载远程资源...")
     all_success = True
-    
-    # 用于存储资源映射
     resource_map = {}
     
     for urls, dest_path, filename, name in files_to_download:
         file_hash = download_file(urls, str(dest_path), name)
         if file_hash:
-            # 重命名文件，添加 hash
             hashed_path, file_hash = get_hashed_filename(str(dest_path))
-            # 如果目标文件已存在，先删除
-            if Path(hashed_path).exists():
-                try:
-                    Path(hashed_path).unlink()
-                except:
-                    pass
             shutil.move(str(dest_path), hashed_path)
-            
-            # 存储映射关系
             resource_map[filename] = Path(hashed_path).name
             print_success(f"    ✓ 已重命名为 {Path(hashed_path).name}")
         else:
@@ -660,7 +602,6 @@ def main():
     else:
         print_success("\n所有资源下载成功！\n")
     
-    # 处理本地资源文件 (app.js, utils.js, styles.css)
     print_info("处理本地资源文件...")
     local_files = [
         (build_dir / "assets" / "css" / "styles.css", "styles.css"),
@@ -671,26 +612,17 @@ def main():
     for file_path, filename in local_files:
         if file_path.exists():
             hashed_path, file_hash = get_hashed_filename(str(file_path))
-            # 如果目标文件已存在，先删除
-            if Path(hashed_path).exists():
-                try:
-                    Path(hashed_path).unlink()
-                except:
-                    pass
             shutil.move(str(file_path), hashed_path)
             resource_map[filename] = Path(hashed_path).name
             print_success(f"  ✓ {filename} -> {resource_map[filename]} (hash: {file_hash})")
     
-    # 基于所有资源 hash 计算构建版本号
     version = calculate_build_version(resource_map)
     print_info(f"\n构建版本号：{version} (基于资源内容计算)\n")
     
-    # 修改 index.html - 更新所有资源引用
-    print_info("\n处理 index.html...")
+    print_info("处理 index.html...")
     index_html_path = build_dir / "index.html"
     shutil.copy2(index_html_path, index_html_path.with_suffix(".html.bak"))
     
-    # 构建替换字典（使用相对路径）
     replacements = {
         "https://cdn.tailwindcss.com": f"./assets/libs/{resource_map['tailwindcss.js']}",
         "https://unpkg.com/vue@3/dist/vue.global.prod.js": f"./assets/libs/{resource_map['vue.global.prod.js']}",
@@ -703,14 +635,12 @@ def main():
     }
     replace_in_file(str(index_html_path), replacements)
     
-    # 添加 PWA 标签
     with open(index_html_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
     pwa_tags = f'<link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="./assets/{resource_map["icon.svg"]}">'
     content = content.replace("</title>", f"</title>{pwa_tags}")
     
-    # 添加更新检测脚本
     sw_register = generate_update_checker(version)
     content = content.replace("</body>", sw_register + "</body>")
     
@@ -718,7 +648,6 @@ def main():
         f.write(content)
     print_success("  ✓ index.html 处理完成")
     
-    # 修改 character/index.html
     print_info("处理 character/index.html...")
     char_html_path = build_dir / "character" / "index.html"
     shutil.copy2(char_html_path, char_html_path.with_suffix(".html.bak"))
@@ -732,7 +661,6 @@ def main():
     replace_in_file(str(char_html_path), char_replacements)
     print_success("  ✓ character/index.html 处理完成")
     
-    # 构建缓存 URL 列表
     cache_urls = [
         "./",
         "./index.html",
@@ -751,12 +679,10 @@ def main():
         "./manifest.json",
     ]
     
-    # 生成 PWA 文件（使用正确的相对路径）
     print_info("\n生成 PWA 支持文件...")
     generate_manifest_json(str(build_dir / "manifest.json"), f"./assets/{resource_map['icon.svg']}")
     generate_sw_js(str(build_dir / "sw.js"), version, cache_urls)
     
-    # 显示构建结果
     print_info("\n" + "="*60)
     print_success("构建完成！")
     print_info("="*60 + "\n")
@@ -772,13 +698,14 @@ def main():
     print("="*60)
     print("✓ 基于内容的 Hash: 文件名包含内容 hash，内容不变则 hash 不变")
     print("✓ 智能版本管理: 版本号基于资源内容，只有内容变化才更新")
-    print("✓ 高效的缓存策略: 只有 hash 变化的资源才会重新下载")
+    print("✓ 高效的缓存策略: 只缓存我们项目构建的静态文件")
+    print("✓ API 不缓存: 所有接口调用和外部请求直接从网络获取")
     print("✓ 避免无效更新: 资源不变时，即使重新构建也不会触发更新")
     print("✓ 增量更新: 只从旧缓存复制未变化的资源，避免全量重下载")
-    print("✓ 实时更新通知：发现新版本时显示漂亮的更新提示")
-    print("✓ 一键更新：用户点击即可立即更新")
-    print("✓ 定期检查：每小时自动检查更新")
-    print("✓ 智能缓存：优先使用缓存，后台更新资源")
+    print("✓ 实时更新通知: 发现新版本时显示漂亮的更新提示")
+    print("✓ 一键更新: 用户点击即可立即更新")
+    print("✓ 定期检查: 每小时自动检查更新")
+    print("✓ 智能缓存: 优先使用缓存，后台更新资源")
     
     print("\n" + "="*60)
     print(f"{Colors.BOLD}{Colors.YELLOW}测试说明：{Colors.ENDC}")
