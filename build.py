@@ -132,185 +132,232 @@ def generate_sw_js(output_path: str, version: str, cache_urls: list) -> None:
     sw_content = '''const CACHE_NAME = 'rp-hub-VERSION';
 const urlsToCache = CACHE_URLS;
 
+// 判断是否是需要缓存的静态资源
+function shouldCacheRequest(request) {
+    // 只缓存 GET 请求
+    if (request.method !== 'GET') {
+        return false;
+    }
+    
+    const requestUrl = new URL(request.url);
+    const pathname = requestUrl.pathname;
+    
+    // 检查是否在预缓存列表中
+    const isInPrecacheList = urlsToCache.some(url => {
+        const cacheUrl = new URL(url, self.location.href);
+        return cacheUrl.pathname === pathname;
+    });
+    
+    if (isInPrecacheList) {
+        return true;
+    }
+    
+    // 检查文件扩展名，只缓存静态资源
+    const staticExtensions = [
+        '.js', '.css', '.html', '.htm',
+        '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+        '.woff', '.woff2', '.ttf', '.eot',
+        '.json', '.xml'
+    ];
+    
+    const hasStaticExtension = staticExtensions.some(ext => 
+        pathname.toLowerCase().endsWith(ext)
+    );
+    
+    return hasStaticExtension;
+}
+
 // 从旧缓存中复制未变化的资源
 async function copyFromOldCache(newCache) {
-  const cacheNames = await caches.keys();
-  const oldCaches = cacheNames.filter(name => name !== CACHE_NAME && name.startsWith('rp-hub-'));
-  
-  let copiedCount = 0;
-  
-  for (const oldCacheName of oldCaches) {
-    const oldCache = await caches.open(oldCacheName);
-    const oldKeys = await oldCache.keys();
+    const cacheNames = await caches.keys();
+    const oldCaches = cacheNames.filter(name => name !== CACHE_NAME && name.startsWith('rp-hub-'));
     
-    for (const request of oldKeys) {
-      const requestUrl = new URL(request.url);
-      // 获取请求的相对路径
-      const relativePath = requestUrl.pathname.substring(requestUrl.pathname.lastIndexOf('/') + 1);
-      
-      // 检查这个 URL 是否在新的缓存列表中
-      const urlInNewCache = urlsToCache.some(url => {
-        const urlPath = url.split('?')[0];
-        const urlFilename = urlPath.substring(urlPath.lastIndexOf('/') + 1);
-        return urlFilename === relativePath;
-      });
-      
-      if (urlInNewCache) {
-        try {
-          const response = await oldCache.match(request);
-          if (response) {
-            await newCache.put(request, response.clone());
-            copiedCount++;
-            console.log('[ServiceWorker] Copied from old cache:', requestUrl.pathname);
-          }
-        } catch (e) {
-          console.log('[ServiceWorker] Failed to copy:', requestUrl.pathname, e);
+    let copiedCount = 0;
+    
+    for (const oldCacheName of oldCaches) {
+        const oldCache = await caches.open(oldCacheName);
+        const oldKeys = await oldCache.keys();
+        
+        for (const request of oldKeys) {
+            const requestUrl = new URL(request.url);
+            // 获取请求的相对路径
+            const relativePath = requestUrl.pathname.substring(requestUrl.pathname.lastIndexOf('/') + 1);
+            
+            // 检查这个 URL 是否在新的缓存列表中
+            const urlInNewCache = urlsToCache.some(url => {
+                const urlPath = url.split('?')[0];
+                const urlFilename = urlPath.substring(urlPath.lastIndexOf('/') + 1);
+                return urlFilename === relativePath;
+            });
+            
+            if (urlInNewCache) {
+                try {
+                    const response = await oldCache.match(request);
+                    if (response) {
+                        await newCache.put(request, response.clone());
+                        copiedCount++;
+                        console.log('[ServiceWorker] Copied from old cache:', requestUrl.pathname);
+                    }
+                } catch (e) {
+                    console.log('[ServiceWorker] Failed to copy:', requestUrl.pathname, e);
+                }
+            }
         }
-      }
     }
-  }
-  
-  return copiedCount;
+    
+    return copiedCount;
 }
 
 // 安装阶段：缓存所有资源
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Installing new version:', 'VERSION');
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(async (newCache) => {
-        console.log('[ServiceWorker] Checking old caches for reusable resources...');
-        const copiedCount = await copyFromOldCache(newCache);
-        console.log('[ServiceWorker] Copied', copiedCount, 'resources from old cache');
-        
-        // 获取新缓存中已有的请求
-        const cachedKeys = await newCache.keys();
-        const cachedUrls = new Set(cachedKeys.map(req => {
-          const url = new URL(req.url);
-          return url.pathname;
-        }));
-        
-        // 只下载缓存中没有的资源
-        const urlsToDownload = [];
-        for (const url of urlsToCache) {
-          // 构建完整 URL 用于比较
-          let fullUrl;
-          if (url.startsWith('http')) {
-            fullUrl = new URL(url);
-          } else {
-            fullUrl = new URL(url, self.location.href);
-          }
-          
-          if (!cachedUrls.has(fullUrl.pathname)) {
-            urlsToDownload.push(url);
-          } else {
-            console.log('[ServiceWorker] Skipping (already in cache):', url);
-          }
-        }
-        
-        console.log('[ServiceWorker] Need to download', urlsToDownload.length, 'new resources');
-        
-        if (urlsToDownload.length > 0) {
-          return Promise.all(
-            urlsToDownload.map(url => {
-              const request = new Request(url, {
-                cache: 'reload',
-                mode: 'no-cors'
-              });
-              return fetch(request).then(response => {
-                if (response && response.ok) {
-                  newCache.put(request, response.clone());
-                  console.log('[ServiceWorker] Downloaded:', url);
+    console.log('[ServiceWorker] Installing new version:', 'VERSION');
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(async (newCache) => {
+                console.log('[ServiceWorker] Checking old caches for reusable resources...');
+                const copiedCount = await copyFromOldCache(newCache);
+                console.log('[ServiceWorker] Copied', copiedCount, 'resources from old cache');
+                
+                // 获取新缓存中已有的请求
+                const cachedKeys = await newCache.keys();
+                const cachedUrls = new Set(cachedKeys.map(req => {
+                    const url = new URL(req.url);
+                    return url.pathname;
+                }));
+                
+                // 只下载缓存中没有的资源
+                const urlsToDownload = [];
+                for (const url of urlsToCache) {
+                    // 构建完整 URL 用于比较
+                    let fullUrl;
+                    if (url.startsWith('http')) {
+                        fullUrl = new URL(url);
+                    } else {
+                        fullUrl = new URL(url, self.location.href);
+                    }
+                    
+                    if (!cachedUrls.has(fullUrl.pathname)) {
+                        urlsToDownload.push(url);
+                    } else {
+                        console.log('[ServiceWorker] Skipping (already in cache):', url);
+                    }
                 }
-                return response;
-              }).catch(e => {
-                console.log('[ServiceWorker] Failed to download:', url, e);
-              });
+                
+                console.log('[ServiceWorker] Need to download', urlsToDownload.length, 'new resources');
+                
+                if (urlsToDownload.length > 0) {
+                    return Promise.all(
+                        urlsToDownload.map(url => {
+                            const request = new Request(url, {
+                                cache: 'reload',
+                                mode: 'no-cors'
+                            });
+                            return fetch(request).then(response => {
+                                if (response && response.ok) {
+                                    newCache.put(request, response.clone());
+                                    console.log('[ServiceWorker] Downloaded:', url);
+                                }
+                                return response;
+                            }).catch(e => {
+                                console.log('[ServiceWorker] Failed to download:', url, e);
+                            });
+                        })
+                    );
+                }
             })
-          );
-        }
-      })
-      .then(() => {
-        console.log('[ServiceWorker] Skip waiting for activation');
-        return self.skipWaiting(); // 立即激活新的 Service Worker
-      })
-  );
+            .then(() => {
+                console.log('[ServiceWorker] Skip waiting for activation');
+                return self.skipWaiting(); // 立即激活新的 Service Worker
+            })
+    );
 });
 
 // 激活阶段：清理旧缓存
 self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activating new version:', 'VERSION');
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName.startsWith('rp-hub-')) {
-            console.log('[ServiceWorker] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+    console.log('[ServiceWorker] Activating new version:', 'VERSION');
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME && cacheName.startsWith('rp-hub-')) {
+                        console.log('[ServiceWorker] Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => {
+            console.log('[ServiceWorker] Claiming all clients');
+            return self.clients.claim(); // 立即接管所有打开的页面
         })
-      );
-    }).then(() => {
-      console.log('[ServiceWorker] Claiming all clients');
-      return self.clients.claim(); // 立即接管所有打开的页面
-    })
-  );
+    );
 });
 
-// 拦截请求，优先使用缓存，同时在后台更新
+// 拦截请求 - 只缓存静态资源
 self.addEventListener('fetch', (event) => {
-  const requestUrl = new URL(event.request.url);
-  
-  // 只处理 http/https 请求
-  if (!requestUrl.protocol.startsWith('http')) {
-    return;
-  }
-  
-  // 策略：先从缓存返回，然后在后台更新
-  event.respondWith(
-    caches.match(event.request, { ignoreSearch: true })
-      .then((cachedResponse) => {
-        // 如果有缓存，先返回缓存
-        if (cachedResponse) {
-          // 后台更新缓存
-          fetch(event.request).then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, networkResponse.clone());
-              });
-            }
-          }).catch(() => {
-            // 网络请求失败，继续使用缓存
-          });
-          return cachedResponse;
-        }
-        
-        // 没有缓存，从网络获取
-        return fetch(event.request).then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse;
-          }
-          // 克隆响应并缓存
-          let responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-          return networkResponse;
-        }).catch(() => {
-          // 离线时返回缓存（如果有）
-          return caches.match(event.request, { ignoreSearch: true });
-        });
-      })
-  );
+    const request = event.request;
+    const requestUrl = new URL(request.url);
+    
+    // 只处理 http/https 请求
+    if (!requestUrl.protocol.startsWith('http')) {
+        return;
+    }
+    
+    // 检查是否需要缓存这个请求
+    if (!shouldCacheRequest(request)) {
+        // 不缓存的请求（API、非GET等），直接从网络获取
+        console.log('[ServiceWorker] Bypassing cache:', request.method, requestUrl.pathname);
+        event.respondWith(fetch(request));
+        return;
+    }
+    
+    // 需要缓存的静态资源 - 使用缓存优先策略
+    event.respondWith(
+        caches.match(request, { ignoreSearch: true })
+            .then((cachedResponse) => {
+                // 如果有缓存，先返回缓存
+                if (cachedResponse) {
+                    console.log('[ServiceWorker] Serving from cache:', requestUrl.pathname);
+                    // 后台更新缓存（静默更新）
+                    fetch(request).then((networkResponse) => {
+                        if (networkResponse && networkResponse.status === 200) {
+                            caches.open(CACHE_NAME).then((cache) => {
+                                cache.put(request, networkResponse.clone());
+                                console.log('[ServiceWorker] Updated cache:', requestUrl.pathname);
+                            });
+                        }
+                    }).catch(() => {
+                        // 网络请求失败，继续使用缓存
+                    });
+                    return cachedResponse;
+                }
+                
+                // 没有缓存，从网络获取并缓存
+                console.log('[ServiceWorker] Fetching from network:', requestUrl.pathname);
+                return fetch(request).then((networkResponse) => {
+                    if (!networkResponse || networkResponse.status !== 200) {
+                        return networkResponse;
+                    }
+                    // 克隆响应并缓存
+                    let responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME)
+                        .then((cache) => {
+                            cache.put(request, responseToCache);
+                        });
+                    return networkResponse;
+                }).catch(() => {
+                    // 离线时返回缓存（如果有）
+                    return caches.match(request, { ignoreSearch: true });
+                });
+            })
+    );
 });
 
 // 监听来自客户端的消息
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('[ServiceWorker] Received SKIP_WAITING message');
-    self.skipWaiting();
-  }
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        console.log('[ServiceWorker] Received SKIP_WAITING message');
+        self.skipWaiting();
+    }
 });'''
     sw_content = sw_content.replace('VERSION', version)
     sw_content = sw_content.replace('CACHE_URLS', str(cache_urls))
@@ -486,10 +533,14 @@ def main():
     build_dir = script_dir / "build"
     libs_dir = build_dir / "assets" / "libs"
     
-    # 清理旧的 build 目录
+    # 清理旧的 build 目录（如果可能）
     if build_dir.exists():
         print_warning("清理旧的 build 目录...")
-        shutil.rmtree(build_dir)
+        try:
+            shutil.rmtree(build_dir)
+        except (PermissionError, OSError) as e:
+            print_warning(f"无法完全删除 build 目录: {e}")
+            print_warning("将在现有基础上更新文件...")
     
     # 创建目录结构
     print_info("创建构建目录...")
@@ -590,6 +641,12 @@ def main():
         if file_hash:
             # 重命名文件，添加 hash
             hashed_path, file_hash = get_hashed_filename(str(dest_path))
+            # 如果目标文件已存在，先删除
+            if Path(hashed_path).exists():
+                try:
+                    Path(hashed_path).unlink()
+                except:
+                    pass
             shutil.move(str(dest_path), hashed_path)
             
             # 存储映射关系
@@ -614,6 +671,12 @@ def main():
     for file_path, filename in local_files:
         if file_path.exists():
             hashed_path, file_hash = get_hashed_filename(str(file_path))
+            # 如果目标文件已存在，先删除
+            if Path(hashed_path).exists():
+                try:
+                    Path(hashed_path).unlink()
+                except:
+                    pass
             shutil.move(str(file_path), hashed_path)
             resource_map[filename] = Path(hashed_path).name
             print_success(f"  ✓ {filename} -> {resource_map[filename]} (hash: {file_hash})")
