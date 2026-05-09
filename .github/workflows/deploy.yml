@@ -45,117 +45,14 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build and generate PWA
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build with Python script
         run: |
-          # 创建 build 目录
-          mkdir -p build
-          cp -r index.html character assets build/
-          
-          # 生成 manifest.json
-          cat > build/manifest.json << 'MANIFESTEOF'
-          {
-            "name": "Roleplay Hub",
-            "short_name": "RP Hub",
-            "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",
-            "start_url": "./",
-            "display": "standalone",
-            "background_color": "#f9fafb",
-            "theme_color": "#1f2937",
-            "icons": [
-              {
-                "src": "https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937",
-                "sizes": "512x512",
-                "type": "image/svg+xml",
-                "purpose": "any"
-              }
-            ]
-          }
-          MANIFESTEOF
-          
-          # 生成 Service Worker
-          cat > build/sw.js << 'SWEOF'
-          const CACHE_NAME = 'rp-hub-v1';
-          const urlsToCache = [
-            './',
-            './index.html',
-            './character/index.html',
-            './assets/css/styles.css',
-            './assets/js/app.js',
-            './assets/js/utils.js',
-            './manifest.json'
-          ];
-
-          self.addEventListener('install', (event) => {
-            event.waitUntil(
-              caches.open(CACHE_NAME)
-                .then((cache) => cache.addAll(urlsToCache))
-            );
-          });
-
-          self.addEventListener('activate', (event) => {
-            event.waitUntil(
-              caches.keys().then((cacheNames) => {
-                return Promise.all(
-                  cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                      return caches.delete(cacheName);
-                    }
-                  })
-                );
-              })
-            );
-          });
-
-          self.addEventListener('fetch', (event) => {
-            const requestUrl = new URL(event.request.url);
-            
-            // 只处理 http/https 请求
-            if (!requestUrl.protocol.startsWith('http')) {
-              return;
-            }
-            
-            event.respondWith(
-              caches.match(event.request, { ignoreSearch: true })
-                .then((response) => {
-                  if (response) {
-                    return response;
-                  }
-                  return fetch(event.request).then((response) => {
-                    if (!response || response.status !== 200 || response.type !== 'basic') {
-                      return response;
-                    }
-                    // 只缓存同域资源
-                    if (requestUrl.origin === location.origin) {
-                      let responseToCache = response.clone();
-                      caches.open(CACHE_NAME)
-                        .then((cache) => {
-                          let url = new URL(event.request.url);
-                          url.search = '';
-                          cache.put(url.toString(), responseToCache).catch(() => {});
-                        });
-                    }
-                    return response;
-                  }).catch(() => {
-                    return caches.match(event.request, { ignoreSearch: true });
-                  });
-                })
-            );
-          });
-          SWEOF
-          
-          # 简单处理 index.html - 保持原样，只添加必要的 PWA 标签
-          cd build
-          
-          # 备份原文件
-          cp index.html index.html.bak
-          
-          # 添加 PWA 标签到 title 后面
-          sed -i 's|</title>|</title><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="https://api.dicebear.com/7.x/shapes/svg?seed=rp-hub&backgroundColor=1f2937">|' index.html
-          
-          # 添加 Service Worker 注册在 </body> 前面
-          sed -i 's|</body>|    <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js")}</script></body>|' index.html
-          
-          echo "Build completed"
+          python build.py
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
