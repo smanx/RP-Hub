@@ -338,6 +338,13 @@
                                     class="absolute -right-3 -top-3 w-8 h-8 bg-secondary/20 rounded-full blur-xl"></div>
                             </div>
                             <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 relative overflow-hidden select-none group"
+                                :class="options.avatarStyle === 'lolita25d' ? 'border-pink-400 bg-pink-50 text-pink-600 ring-2 ring-pink-200 shadow-sm' : 'border-base-300 bg-base-100 hover:border-base-content/30 hover:bg-base-200/50'"
+                                @click="options.avatarStyle = 'lolita25d'">
+                                <span class="font-bold text-sm">2.5D唯美风（萝）</span>
+                                <div v-if="options.avatarStyle === 'lolita25d'"
+                                    class="absolute -right-3 -top-3 w-8 h-8 bg-pink-300/40 rounded-full blur-xl"></div>
+                            </div>
+                            <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 relative overflow-hidden select-none group"
                                 :class="options.avatarStyle === 'anime' ? 'border-accent bg-accent/10 text-accent ring-2 ring-accent/20 shadow-sm' : 'border-base-300 bg-base-100 hover:border-base-content/30 hover:bg-base-200/50'"
                                 @click="options.avatarStyle = 'anime'">
                                 <span class="font-bold text-sm">本子动漫风</span>
@@ -926,6 +933,11 @@
                                         世界书条目
                                     </h3>
                                     <div class="flex gap-2">
+                                        <label class="btn btn-sm btn-outline border-base-300 cursor-pointer">
+                                            导入
+                                            <input type="file" class="hidden" accept=".json,application/json"
+                                                @change="importWorldInfoFile" />
+                                        </label>
                                         <button @click="openSelectiveExport('world')" class="btn btn-sm btn-outline border-base-300"
                                             :disabled="worldInfo.length === 0">导出</button>
                                         <button @click="addWorldEntry"
@@ -1124,6 +1136,11 @@
                                         正则脚本
                                     </h3>
                                     <div class="flex gap-2">
+                                        <label class="btn btn-sm btn-outline border-base-300 cursor-pointer">
+                                            导入
+                                            <input type="file" class="hidden" accept=".json,application/json"
+                                                @change="importRegexFile" />
+                                        </label>
                                         <button @click="openSelectiveExport('regex')" class="btn btn-sm btn-outline border-base-300"
                                             :disabled="regexScripts.length === 0">导出</button>
                                         <button @click="addRegexScript"
@@ -1577,6 +1594,19 @@
                             </svg>
                             <span class="truncate">角色列表</span>
                         </div>
+                        <label
+                            class="btn btn-sm btn-outline btn-circle border-base-300 hover:border-primary hover:bg-primary hover:text-white cursor-pointer shrink-0"
+                            title="导入角色卡">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" x2="12" y1="15" y2="3" />
+                            </svg>
+                            <input type="file" class="hidden" accept=".png,.json,application/json,image/png"
+                                @change="importCharacterCard" />
+                        </label>
                         <button @click="createNewCharacter"
                             class="btn btn-sm btn-primary btn-circle text-white shadow-lg shadow-primary/30 shrink-0">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -1854,6 +1884,8 @@
                                 options.avatarStyle = 'hentai';
                             } else if (mainSettings.imageStyle === 'vertical') {
                                 options.avatarStyle = 'default';
+                            } else if (mainSettings.imageStyle === 'lolita25d') {
+                                options.avatarStyle = 'lolita25d';
                             }
 
                             // Sync Models
@@ -2220,6 +2252,185 @@
                     uiTemplates: []
                 });
 
+                const decodeBase64Utf8 = (value) => {
+                    try {
+                        const binary = atob(String(value || '').trim());
+                        const bytes = new Uint8Array(binary.length);
+                        for (let i = 0; i < binary.length; i++) {
+                            bytes[i] = binary.charCodeAt(i);
+                        }
+                        return new TextDecoder('utf-8').decode(bytes);
+                    } catch (e) {
+                        return String(value || '');
+                    }
+                };
+
+                const readPngChunks = (buffer) => {
+                    const view = new DataView(buffer);
+                    const chunks = {};
+                    let offset = 8;
+
+                    try {
+                        while (offset + 8 <= view.byteLength) {
+                            const length = view.getUint32(offset);
+                            const type = String.fromCharCode(
+                                view.getUint8(offset + 4),
+                                view.getUint8(offset + 5),
+                                view.getUint8(offset + 6),
+                                view.getUint8(offset + 7)
+                            );
+                            if (offset + 8 + length > view.byteLength) break;
+
+                            if (type === 'tEXt') {
+                                const data = new Uint8Array(buffer, offset + 8, length);
+                                const splitIndex = data.indexOf(0);
+                                if (splitIndex !== -1) {
+                                    const key = new TextDecoder().decode(data.slice(0, splitIndex));
+                                    const value = new TextDecoder().decode(data.slice(splitIndex + 1));
+                                    chunks[key] = value;
+                                }
+                            } else if (type === 'iTXt') {
+                                const data = new Uint8Array(buffer, offset + 8, length);
+                                let cursor = 0;
+                                while (cursor < data.length && data[cursor] !== 0) cursor++;
+                                const key = new TextDecoder().decode(data.slice(0, cursor));
+                                cursor += 3;
+                                while (cursor < data.length && data[cursor] !== 0) cursor++;
+                                cursor++;
+                                while (cursor < data.length && data[cursor] !== 0) cursor++;
+                                cursor++;
+                                if (key && cursor < data.length) {
+                                    chunks[key] = new TextDecoder().decode(data.slice(cursor));
+                                }
+                            }
+
+                            offset += 12 + length;
+                        }
+                    } catch (e) {
+                        console.warn('PNG 数据读取失败:', e);
+                    }
+
+                    return chunks;
+                };
+
+                const getArrayValues = (value) => {
+                    if (Array.isArray(value)) return value;
+                    if (value && typeof value === 'object') return Object.values(value);
+                    return [];
+                };
+
+                const buildCharacterFromImport = (rawData, avatarUrl = null) => {
+                    const root = rawData || {};
+                    const data = root.data && typeof root.data === 'object' ? root.data : root;
+                    const rootExtensions = root.extensions && typeof root.extensions === 'object' ? root.extensions : {};
+                    const dataExtensions = data.extensions && typeof data.extensions === 'object' ? data.extensions : {};
+                    const characterBook = data.character_book || root.character_book || data.characterBook || root.characterBook;
+                    const regexSource = dataExtensions.regex_scripts
+                        || rootExtensions.regex_scripts
+                        || data.regexScripts
+                        || data.regex_scripts
+                        || root.regexScripts
+                        || root.regex_scripts
+                        || [];
+                    const uiTemplateSource = data.uiTemplates
+                        || data.ui_templates
+                        || root.uiTemplates
+                        || root.ui_templates
+                        || dataExtensions.rp_hub_ui_templates
+                        || dataExtensions.ui_templates
+                        || rootExtensions.rp_hub_ui_templates
+                        || rootExtensions.ui_templates
+                        || [];
+                    const worldEntries = characterBook
+                        ? getArrayValues(characterBook.entries || characterBook)
+                        : getArrayValues(data.worldInfo || data.world_info || root.worldInfo || root.world_info);
+
+                    return normalizeCharacterShape({
+                        id: generateUUID(),
+                        name: data.name || data.char_name || '未命名角色',
+                        description: data.description || data.char_persona || '',
+                        personality: data.personality || '',
+                        scenario: data.scenario || '',
+                        first_mes: data.first_mes || data.first_message || '',
+                        mes_example: data.mes_example || '',
+                        creator_notes: data.creator_notes || data.creatorcomment || data.creator_comment || '',
+                        system_prompt: data.system_prompt || '',
+                        post_history_instructions: data.post_history_instructions || '',
+                        tags: Array.isArray(data.tags) ? data.tags : [],
+                        avatar: avatarUrl || data.avatar || data.avatar_url || root.avatar || null,
+                        avatar_prompt: data.avatar_prompt || dataExtensions.avatar_prompt || root.avatar_prompt || '',
+                        worldInfo: worldEntries,
+                        regexScripts: getArrayValues(regexSource),
+                        uiTemplates: getArrayValues(uiTemplateSource)
+                    });
+                };
+
+                const applyImportedCharacter = (rawData, avatarUrl = null) => {
+                    const importedCharacter = buildCharacterFromImport(rawData, avatarUrl);
+                    characters.value.push(importedCharacter);
+                    currentCharacterIndex.value = characters.value.length - 1;
+                    activeTab.value = 'basic';
+                    document.getElementById('my-drawer').checked = false;
+                    showToast(`已导入角色卡：${importedCharacter.name || '未命名角色'}`, 'success');
+                };
+
+                const importCharacterCard = (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    event.target.value = '';
+
+                    if (file.type === 'application/json' || file.name.toLowerCase().endsWith('.json')) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                applyImportedCharacter(JSON.parse(e.target.result));
+                            } catch (err) {
+                                showToast('JSON 角色卡解析失败', 'error');
+                                console.error('JSON import error:', err);
+                            }
+                        };
+                        reader.readAsText(file);
+                        return;
+                    }
+
+                    if (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                const buffer = e.target.result;
+                                const chunks = readPngChunks(buffer);
+                                let rawDataStr = chunks.chara || chunks.ccv3 || '';
+                                if (!rawDataStr) {
+                                    rawDataStr = Object.values(chunks).find(value => {
+                                        const text = String(value || '').trim();
+                                        return text.length > 50 && (text.startsWith('{') || text.startsWith('ey'));
+                                    }) || '';
+                                }
+                                if (!rawDataStr) throw new Error('未找到角色卡数据');
+
+                                let data;
+                                try {
+                                    data = JSON.parse(decodeBase64Utf8(rawDataStr));
+                                } catch (decodeError) {
+                                    data = JSON.parse(rawDataStr);
+                                }
+
+                                const blob = new Blob([buffer], { type: 'image/png' });
+                                const avatarReader = new FileReader();
+                                avatarReader.onloadend = () => applyImportedCharacter(data, avatarReader.result);
+                                avatarReader.readAsDataURL(blob);
+                            } catch (err) {
+                                showToast('PNG 角色卡解析失败', 'error');
+                                console.error('PNG import error:', err);
+                            }
+                        };
+                        reader.readAsArrayBuffer(file);
+                        return;
+                    }
+
+                    showToast('只支持导入 .json 或 .png 角色卡', 'error');
+                };
+
 
                 // Storage Logic (IndexedDB via localforage)
                 const characters = ref([createEmptyCharacter()]);
@@ -2319,6 +2530,65 @@
                 const worldInfo = computed(() => currentCharacter.value.worldInfo);
                 const regexScripts = computed(() => currentCharacter.value.regexScripts);
                 const uiTemplates = computed(() => currentCharacter.value.uiTemplates);
+
+                const readJsonFile = (event, onData, errorMessage = '导入失败') => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    event.target.value = '';
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            onData(JSON.parse(e.target.result));
+                        } catch (err) {
+                            showToast(errorMessage, 'error');
+                            console.error(errorMessage, err);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+
+                const extractWorldInfoEntries = (payload) => {
+                    if (Array.isArray(payload)) return payload;
+                    const data = payload?.data || payload || {};
+                    const book = data.character_book || payload?.character_book || data.characterBook || payload?.characterBook;
+                    if (book) return getArrayValues(book.entries || book);
+                    return getArrayValues(data.worldInfo || data.world_info || payload?.worldInfo || payload?.world_info || payload?.entries);
+                };
+
+                const extractRegexEntries = (payload) => {
+                    if (Array.isArray(payload)) return payload;
+                    const data = payload?.data || payload || {};
+                    return getArrayValues(
+                        data.extensions?.regex_scripts
+                        || payload?.extensions?.regex_scripts
+                        || data.regexScripts
+                        || data.regex_scripts
+                        || payload?.regexScripts
+                        || payload?.regex_scripts
+                        || payload?.scripts
+                    );
+                };
+
+                const importWorldInfoFile = (event) => {
+                    readJsonFile(event, (payload) => {
+                        const entries = extractWorldInfoEntries(payload).map(normalizeWorldInfoEntry);
+                        if (!entries.length) throw new Error('没有找到世界书条目');
+                        currentCharacter.value.worldInfo.push(...entries);
+                        activeTab.value = 'world';
+                        showToast(`已导入 ${entries.length} 条世界书`, 'success');
+                    }, '世界书导入失败');
+                };
+
+                const importRegexFile = (event) => {
+                    readJsonFile(event, (payload) => {
+                        const scripts = extractRegexEntries(payload).map(normalizeRegexScript);
+                        if (!scripts.length) throw new Error('没有找到正则脚本');
+                        currentCharacter.value.regexScripts.push(...scripts);
+                        activeTab.value = 'regex';
+                        showToast(`已导入 ${scripts.length} 个正则脚本`, 'success');
+                    }, '正则导入失败');
+                };
 
                 const applyRegex = (text, scripts, options = {}) => {
                     if (!text) return '';
@@ -2859,6 +3129,47 @@
                     };
                 };
 
+                const normalizeNativeReasoningPart = (value) => {
+                    if (value === undefined || value === null) return '';
+                    if (typeof value === 'string') return value;
+                    if (Array.isArray(value)) return value.map(normalizeNativeReasoningPart).join('');
+                    if (typeof value === 'object') {
+                        const keys = ['text', 'content', 'summary', 'reasoning', 'reasoning_content', 'thinking', 'thought', 'value'];
+                        for (const key of keys) {
+                            const text = normalizeNativeReasoningPart(value[key]);
+                            if (text) return text;
+                        }
+                        return '';
+                    }
+                    return String(value);
+                };
+
+                const extractNativeReasoning = (source = {}) => {
+                    if (!source || typeof source !== 'object') return '';
+                    const directKeys = ['reasoning_content', 'reasoning', 'thinking', 'thinking_content', 'thought', 'thoughts', 'reasoning_text'];
+                    for (const key of directKeys) {
+                        const text = normalizeNativeReasoningPart(source[key]);
+                        if (text) return text;
+                    }
+                    if (Array.isArray(source.reasoning_details)) {
+                        const text = normalizeNativeReasoningPart(source.reasoning_details);
+                        if (text) return text;
+                    }
+                    if (Array.isArray(source.content)) {
+                        return source.content.map(part => {
+                            const type = String(part?.type || '').toLowerCase();
+                            if (type.includes('reason') || type.includes('thinking') || type.includes('thought')) {
+                                return normalizeNativeReasoningPart(part);
+                            }
+                            return '';
+                        }).join('');
+                    }
+                    return '';
+                };
+
+                const hasInlineThinking = (text = '') => /<\s*(think|cot)\b/i.test(String(text || ''));
+                const stripInlineThinking = (text = '') => String(text || '').replace(/<\s*(think|cot)\b[^>]*>[\s\S]*?(?:<\s*\/\s*\1\s*>|<\s*\1\s*>|$)/gi, '').trimStart();
+
                 const buildUiTemplateSystemPrompt = () => {
                     const char = currentCharacter.value;
                     const characterContext = {
@@ -3189,7 +3500,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                     showToast('开始修改...', 'info');
                     isGenerating.value = true;
                     generationProgress.value = 0;
-                    generationStatus.value = '正在分析修改方案...';
+                    generationStatus.value = '正在等待API响应...';
                     abortController.value = new AbortController();
 
                     // Prepare Context
@@ -3286,6 +3597,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
 
                         const baseUrl = api.url.replace(/\/+$/, '');
                         const apiUrl = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+                        generationStatus.value = '正在等待API响应...';
 
                         console.log('%c[Workshop AI Request]', 'color: #3b82f6; font-weight: bold;', { url: apiUrl, model: api.model });
                         const response = await fetch(`${apiUrl}/chat/completions`, {
@@ -3311,22 +3623,49 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                         const reader = response.body.getReader();
                         const decoder = new TextDecoder();
                         let fullContent = '';
+                        let rawContentBuffer = '';
+                        let sseBuffer = '';
+                        let receivedContent = false;
 
                         while (true) {
                             const { done, value } = await reader.read();
                             if (done) break;
 
-                            const chunk = decoder.decode(value, { stream: true });
-                            const lines = chunk.split('\n');
+                            sseBuffer += decoder.decode(value, { stream: true });
+                            const lines = sseBuffer.split('\n');
+                            sseBuffer = lines.pop() || '';
                             for (const line of lines) {
-                                if (line.startsWith('data: ')) {
-                                    const data = line.slice(6);
+                                const trimmedLine = line.trim();
+                                if (trimmedLine.startsWith('data:')) {
+                                    const data = trimmedLine.replace(/^data:\s*/, '');
                                     if (data === '[DONE]') continue;
                                     try {
                                         const json = JSON.parse(data);
-                                        const content = json.choices[0]?.delta?.content || '';
+                                        const choice = json.choices?.[0];
+                                        const delta = choice?.delta || choice?.message || {};
+                                        const reasoning = extractNativeReasoning(delta) || extractNativeReasoning(choice);
+                                        if (reasoning) {
+                                            if (!receivedContent) {
+                                                generationStatus.value = '正在思考...';
+                                            }
+                                        }
+
+                                        const content = delta.content || '';
                                         if (content) {
-                                            fullContent += content;
+                                            rawContentBuffer += content;
+                                            if (hasInlineThinking(rawContentBuffer) && !receivedContent) {
+                                                generationStatus.value = '正在思考...';
+                                            }
+
+                                            const visibleContent = stripInlineThinking(rawContentBuffer);
+                                            if (hasInlineThinking(rawContentBuffer) && !visibleContent.trim()) {
+                                                generationStatus.value = '正在思考...';
+                                                continue;
+                                            }
+
+                                            if (!visibleContent) continue;
+                                            receivedContent = true;
+                                            fullContent = visibleContent;
                                             // Update progress simply to show activity
                                             generationProgress.value = Math.min(99, generationProgress.value + 1);
 
@@ -3405,7 +3744,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
 
                                                     // 如果还是没匹配到，但有内容，显示通用提示
                                                     if (!matched && cleanSample.length > 5) {
-                                                        generationStatus.value = '正在分析变更内容...';
+                                                        generationStatus.value = '正在整理变更内容...';
                                                     }
                                                 }
                                             }
@@ -4202,12 +4541,15 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                     const tokenParam = options.imageGenKey ? options.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
                     const defaultArtists = '[[[artist:dishwasher1910]]], {{yd_(orange_maru)}}, [artist:ciloranko], [artist:sho_(sho_lwlw)], [ningen mame], year 2024,';
                     const r18Artists = "0.9::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
+                    const lolita25dArtists = "0.9::misaka_12003-gou & dino, rurudo,  mignon,wanke & liduk::, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
                     const animeArtists = '1.4::asanagi::,{{{{{artist:asanagi}}}}},1.2::xiaoluo_xl::,1.3::Artist: misaka_12003-gou::,1.2::Artist:shexyo::,0.7::Artist:b.sa_(bbbs)::,1::Artist:qiandaiyiyu::,1.05::artist:natedecock::,1.05::artist:kunaboto::,0.75::artist:kandata_nijou::,1.05::artist:zer0.zer0 ::,1.05::artist:jasony::,0.75::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, {textless version, The image is highly intricate finished drawn,write realistically,true to life}, 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::, 1.63::photorealistic::,3::age slider::,1.63::photo(medium)::, 2::best quality, absurdres, very aesthetic, detailed, masterpiece::,-4::Muscle definition, abs::';
                     const galgameArtists = 'artist:ningen_mame,, noyu_(noyu23386566),, toosaka asagi,, location,\\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,:,, very aesthetic, masterpiece, no text,';
 
                     let targetArtists = defaultArtists;
                     if (options.avatarStyle === 'hentai') {
                         targetArtists = r18Artists;
+                    } else if (options.avatarStyle === 'lolita25d') {
+                        targetArtists = lolita25dArtists;
                     } else if (options.avatarStyle === 'anime') {
                         targetArtists = animeArtists;
                     } else if (options.avatarStyle === 'galgame') {
@@ -4283,7 +4625,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                     showToast('开始生成...', 'info');
                     isGenerating.value = true;
                     generationProgress.value = 0;
-                    generationStatus.value = '正在解析指令...';
+                    generationStatus.value = '正在等待API响应...';
                     generatedSections.clear(); // Reset generated sections tracker
                     abortController.value = new AbortController();
 
@@ -4395,6 +4737,7 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                         try {
                             const baseUrl = api.url.replace(/\/+$/, '');
                             const apiUrl = baseUrl.endsWith('/v1') ? baseUrl : `${baseUrl}/v1`;
+                            if (!isRetry) generationStatus.value = '正在等待API响应...';
 
                             console.log('%c[Workshop AI Request]', 'color: #3b82f6; font-weight: bold;', { url: apiUrl, model: api.model });
                             const response = await fetch(`${apiUrl}/chat/completions`, {
@@ -4430,23 +4773,49 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                                 const reader = response.body.getReader();
                                 const decoder = new TextDecoder();
                                 let buffer = '';
+                                let rawContentBuffer = '';
+                                let sseBuffer = '';
+                                let receivedContent = false;
 
                                 while (true) {
                                     const { done, value } = await reader.read();
                                     if (done) break;
 
-                                    const chunk = decoder.decode(value, { stream: true });
-                                    const lines = chunk.split('\n');
+                                    sseBuffer += decoder.decode(value, { stream: true });
+                                    const lines = sseBuffer.split('\n');
+                                    sseBuffer = lines.pop() || '';
                                     for (const line of lines) {
-                                        if (line.startsWith('data: ')) {
-                                            const data = line.slice(6);
+                                        const trimmedLine = line.trim();
+                                        if (trimmedLine.startsWith('data:')) {
+                                            const data = trimmedLine.replace(/^data:\s*/, '');
                                             if (data === '[DONE]') continue;
                                             try {
                                                 const json = JSON.parse(data);
-                                                const content = json.choices[0]?.delta?.content || '';
+                                                const choice = json.choices?.[0];
+                                                const delta = choice?.delta || choice?.message || {};
+                                                const reasoning = extractNativeReasoning(delta) || extractNativeReasoning(choice);
+                                                if (reasoning) {
+                                                    if (!receivedContent) {
+                                                        generationStatus.value = '正在思考...';
+                                                    }
+                                                }
+
+                                                const content = delta.content || '';
                                                 if (content) {
-                                                    buffer += content;
-                                                    parseBuffer(buffer);
+                                                    rawContentBuffer += content;
+                                                    if (hasInlineThinking(rawContentBuffer) && !receivedContent) {
+                                                        generationStatus.value = '正在思考...';
+                                                    }
+                                                    const visibleContent = stripInlineThinking(rawContentBuffer);
+                                                    if (hasInlineThinking(rawContentBuffer) && !visibleContent.trim()) {
+                                                        generationStatus.value = '正在思考...';
+                                                        continue;
+                                                    }
+                                                    if (visibleContent) {
+                                                        receivedContent = true;
+                                                        buffer = visibleContent;
+                                                        parseBuffer(buffer);
+                                                    }
                                                 }
                                             } catch (e) { }
                                         }
@@ -4455,7 +4824,11 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                                 fullContent = buffer;
                             } else {
                                 const data = await response.json();
-                                const content = data.choices[0]?.message?.content || '';
+                                const message = data.choices?.[0]?.message || {};
+                                const reasoning = extractNativeReasoning(message);
+                                const rawContent = message.content || '';
+                                if (reasoning || hasInlineThinking(rawContent)) generationStatus.value = '正在思考...';
+                                const content = stripInlineThinking(rawContent);
                                 parseBuffer(content);
                                 fullContent = content;
                             }
@@ -4533,6 +4906,103 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                 };
 
                 const generatedSections = reactive(new Set());
+
+                const stripJsonCodeFence = (text = '') => {
+                    return String(text || '')
+                        .trim()
+                        .replace(/^```(?:json)?\s*/i, '')
+                        .replace(/\s*```\s*$/i, '')
+                        .trim();
+                };
+
+                const parseJsonWithLightRepair = (str) => {
+                    try {
+                        return JSON.parse(str);
+                    } catch (err) {
+                        const fixed = str.replace(/("(?:content|comment|keys|name|regex|replacement|scriptName|findRegex|replaceString)"\s*:\s*")([\s\S]*?)("\s*[,\]}])/g, (m, p1, p2, p3) => {
+                            const escapedP2 = p2.replace(/(?<!\\)"/g, '\\"');
+                            return p1 + escapedP2 + p3;
+                        });
+                        return JSON.parse(fixed);
+                    }
+                };
+
+                const extractCompleteJsonObjects = (text = '') => {
+                    const values = [];
+                    let start = -1;
+                    let depth = 0;
+                    let inString = false;
+                    let escape = false;
+
+                    for (let i = 0; i < text.length; i++) {
+                        const char = text[i];
+                        if (inString) {
+                            if (escape) {
+                                escape = false;
+                            } else if (char === '\\') {
+                                escape = true;
+                            } else if (char === '"') {
+                                inString = false;
+                            }
+                            continue;
+                        }
+                        if (char === '"') {
+                            inString = true;
+                            continue;
+                        }
+                        if (char === '{') {
+                            if (depth === 0) start = i;
+                            depth++;
+                        } else if (char === '}' && depth > 0) {
+                            depth--;
+                            if (depth === 0 && start !== -1) {
+                                values.push(text.slice(start, i + 1));
+                                start = -1;
+                            }
+                        }
+                    }
+
+                    return values;
+                };
+
+                const coerceWorldInfoJsonItems = (value) => {
+                    if (Array.isArray(value)) return value;
+                    const entries = extractWorldInfoEntries(value);
+                    if (entries.length) return entries;
+                    if (value && typeof value === 'object' && (value.content !== undefined || value.keys !== undefined || value.key !== undefined || value.comment !== undefined)) {
+                        return [value];
+                    }
+                    return [];
+                };
+
+                const coerceRegexJsonItems = (value) => {
+                    if (Array.isArray(value)) return value;
+                    const scripts = extractRegexEntries(value);
+                    if (scripts.length) return scripts;
+                    if (value && typeof value === 'object' && (value.regex !== undefined || value.findRegex !== undefined || value.replacement !== undefined || value.replaceString !== undefined || value.scriptName !== undefined)) {
+                        return [value];
+                    }
+                    return [];
+                };
+
+                const parseFlexibleJsonItems = (text, coerceItems) => {
+                    const clean = stripJsonCodeFence(text);
+                    if (!clean) return [];
+
+                    try {
+                        const directItems = coerceItems(parseJsonWithLightRepair(clean));
+                        if (directItems.length) return directItems;
+                    } catch (e) { }
+
+                    const objects = extractCompleteJsonObjects(clean);
+                    const items = [];
+                    for (const objectText of objects) {
+                        try {
+                            items.push(...coerceItems(parseJsonWithLightRepair(objectText)));
+                        } catch (e) { }
+                    }
+                    return items;
+                };
 
                 const parseBuffer = (text) => {
                     const sections = [
@@ -4614,76 +5084,14 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                             }
 
                             if (section.field === 'world_info_json') {
-                                try {
-                                    let jsonStr = content.trim();
-                                    // Remove markdown code blocks if present
-                                    if (jsonStr.startsWith('```')) {
-                                        jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-                                    }
-
-                                    // Attempt to extract JSON array if not clean (e.g. surrounding text)
-                                    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-                                    if (arrayMatch) {
-                                        jsonStr = arrayMatch[0];
-                                    }
-
-                                    // 预处理：修复 AI 常见的 JSON 错误（如未转义的双引号）
-                                    // 专门针对 "content": "..." 或 "comment": "..." 这种模式
-                                    const fixJson = (str) => {
-                                        try {
-                                            return JSON.parse(str);
-                                        } catch (err) {
-                                            // 如果解析失败，尝试修复 content 字段中的未转义双引号
-                                            // 这是一个极简的启发式修复：查找 "content": "..." 模式
-                                            // 将其中被双引号包裹但不是作为 KV 分隔符的内容进行转义
-                                            let fixed = str.replace(/("(?:content|comment|keys|name|regex|replacement|scriptName|findRegex|replaceString)"\s*:\s*")([\s\S]*?)("\s*[,\]}])/g, (m, p1, p2, p3) => {
-                                                // 将内部的 " 转义为 \"，但要排除已经转义过的
-                                                const escapedP2 = p2.replace(/(?<!\\)"/g, '\\"');
-                                                return p1 + escapedP2 + p3;
-                                            });
-                                            return JSON.parse(fixed);
-                                        }
-                                    };
-
-                                    const parsed = fixJson(jsonStr);
-                                    if (Array.isArray(parsed)) {
-                                        currentCharacter.value.worldInfo = parsed.map(normalizeWorldInfoEntry);
-                                    }
-                                } catch (e) {
-                                    // Only log/warn if it looks like a complete JSON block failed
-                                    // console.warn('World Info Parse Error:', e);
+                                const parsedEntries = parseFlexibleJsonItems(content, coerceWorldInfoJsonItems);
+                                if (parsedEntries.length) {
+                                    currentCharacter.value.worldInfo = parsedEntries.map(normalizeWorldInfoEntry);
                                 }
                             } else if (section.field === 'regex_scripts_json') {
-                                try {
-                                    let jsonStr = content.trim();
-                                    // Remove markdown code blocks if present
-                                    if (jsonStr.startsWith('```')) {
-                                        jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-                                    }
-
-                                    // Attempt to extract JSON array if not clean (e.g. surrounding text)
-                                    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
-                                    if (arrayMatch) {
-                                        jsonStr = arrayMatch[0];
-                                    }
-
-                                    const fixJson = (str) => {
-                                        try { return JSON.parse(str); }
-                                        catch (err) {
-                                            let fixed = str.replace(/("(?:content|comment|keys|name|regex|replacement|scriptName|findRegex|replaceString)"\s*:\s*")([\s\S]*?)("\s*[,\]}])/g, (m, p1, p2, p3) => {
-                                                const escapedP2 = p2.replace(/(?<!\\)"/g, '\\"');
-                                                return p1 + escapedP2 + p3;
-                                            });
-                                            return JSON.parse(fixed);
-                                        }
-                                    };
-
-                                    const parsed = fixJson(jsonStr);
-                                    if (Array.isArray(parsed)) {
-                                        currentCharacter.value.regexScripts = parsed.map(normalizeRegexScript);
-                                    }
-                                } catch (e) {
-                                    // console.warn('Regex Scripts Parse Error:', e);
+                                const parsedScripts = parseFlexibleJsonItems(content, coerceRegexJsonItems);
+                                if (parsedScripts.length) {
+                                    currentCharacter.value.regexScripts = parsedScripts.map(normalizeRegexScript);
                                 }
                             } else if (section.field === 'avatar_prompt') {
                                 // 简单的防抖，避免流式传输中途频繁打印
@@ -4999,9 +5407,11 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                     deleteCharacter,
                     addWorldEntry,
                     removeWorldEntry,
+                    importWorldInfoFile,
                     updateEntryKeys,
                     addRegexScript,
                     removeRegexScript,
+                    importRegexFile,
                     addUiTemplate,
                     removeUiTemplate,
                     generateUiTemplate,
@@ -5012,6 +5422,7 @@ JSON 字段（世界书/正则脚本）必须输出为合法的 JSON 数组，**
                     hasFlag,
                     toggleFlag,
                     handleImageUpload,
+                    importCharacterCard,
                     cacheAvatar,
                     rerollAvatar,
                     generateCharacter,
