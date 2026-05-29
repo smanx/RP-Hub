@@ -135,8 +135,11 @@ createApp({
         let uiTemplateUpdateAbortController = null;
         const showRegexEditor = ref(false);
         const showWorldInfoEditor = ref(false);
+        const showActiveToolEditor = ref(false);
         const showUserSetupModal = ref(false);
         const showAutoImageGenModal = ref(false);
+        const pendingActiveToolContext = ref('');
+        const activeToolResultContexts = ref([]);
         const tempUserSetup = reactive({ name: '', description: '', person: 'second' });
         const characterDisplayLimit = ref(20);
 
@@ -190,22 +193,20 @@ createApp({
             isUpdateScrolledToBottom.value = (el.scrollHeight - el.scrollTop - el.clientHeight) < 10;
         };
         const latestUpdate = reactive({
-            id: 10136, // 确保这是一个五位数ID，每次更新内容时增加这个数字
+            id: 10138, // 确保这是一个五位数ID，每次更新内容时增加这个数字
             date: new Date().toISOString().split('T')[0],
             title: '网站公告',
             content: `
-### RP-Hub 1.6.3
+### RP-Hub 1.6.5
 
-- 彻底去除旧记忆模式
-- 大幅度优化了向量记忆的准确性和模型对其的理解能力
-- 加强了上下文后处理，确保对话轮数的正确性
-- 优化重写了部分预设，并适配新版记忆系统
-- 调整了召回记忆数量，保留楼层的上下限与默认值
-- 更改了记忆向量坐标的压缩与存储方式
+- 新增"联网搜索"与"世界书阅读/管理"工具
+- 优化了工具调用状态下的UI表现
+- 优化了AI对工具的使用表现
+- 修复了部分闪烁BUG
 
 本项目为全开源公益项目，严禁倒卖源码，二改需经作者授权
 
-#### 更新时间：05/26/21:12
+#### 更新时间：05/29/05:35
                     `
         });
 
@@ -221,7 +222,7 @@ createApp({
         };
 
         const startUpdateCountdown = () => {
-            updateCountdown.value = 10;
+            updateCountdown.value = 8;
             if (updateCountdownTimer) clearInterval(updateCountdownTimer);
             updateCountdownTimer = setInterval(() => {
                 if (updateCountdown.value > 0) {
@@ -259,6 +260,13 @@ createApp({
         const remoteEstimatedTime = ref(null); // 新增：远程预计时间
         const isReceiving = ref(false);
         const isThinking = ref(false);
+        const activeToolContinuationMessageId = ref(null);
+        const activeToolContinuationToolCallId = ref(null);
+        const activeToolContinuationHasResponse = ref(false);
+        const activeToolHandoffPending = ref(false);
+        const activeToolQueueRunning = ref(false);
+        const activeToolContinuationPending = ref(false);
+        let activeToolQueueAbortController = null;
         const abortController = ref(null);
         const userInput = ref('');
         const modelSearchQuery = ref('');
@@ -597,6 +605,24 @@ createApp({
         let isLoadingEarlierChatMessages = false;
         let isChatTopUnlockArmed = true;
         const lastActiveCharacterId = ref(null); // For persistence
+        const hasActiveToolInlineWork = computed(() => {
+            if (activeToolHandoffPending.value || activeToolContinuationMessageId.value || activeToolContinuationPending.value || activeToolQueueRunning.value) return true;
+            if (!isGenerating.value && !isRemoteGenerating.value) return false;
+            return chatHistory.value.some(msg => (
+                msg?.role === 'assistant'
+                && Array.isArray(msg.toolCalls)
+                && msg.toolCalls.some(toolCall => ['receiving', 'queued', 'running', 'continuing'].includes(toolCall?.status))
+            ));
+        });
+        const activeToolInlineStatusText = computed(() => {
+            if (activeToolQueueRunning.value) return '调用中';
+            if (activeToolContinuationMessageId.value || activeToolContinuationPending.value) {
+                return isThinking.value ? '模型思考中' : '生成中';
+            }
+            if (activeToolHandoffPending.value || hasActiveToolInlineWork.value) return '工具准备中';
+            return '';
+        });
+        const isConversationBusy = computed(() => isGenerating.value || isRemoteGenerating.value || hasActiveToolInlineWork.value);
 
         const presets = ref([]);
         const deepSeekThinkingInstructionMarker = '【DeepSeek思考层硬规则】';
@@ -858,7 +884,7 @@ createApp({
         const MEMORY_VECTOR_MERGE_MAX_LENGTH = 400;
         const MEMORY_VECTOR_MIN_TOP_K = 10;
         const MEMORY_VECTOR_MAX_TOP_K = 30;
-        const MEMORY_VECTOR_DEFAULT_TOP_K = 10;
+        const MEMORY_VECTOR_DEFAULT_TOP_K = 15;
         const MEMORY_KEEP_FLOORS_MIN = 10;
         const MEMORY_KEEP_FLOORS_MAX = 60;
         const MEMORY_KEEP_FLOORS_DEFAULT = 40;
@@ -886,6 +912,108 @@ createApp({
         let _memoriesLoaded = false; // 标志：防止在记忆加载前 saveData 覆盖已存数据
         let _initComplete = false; // 守卫标志：防止 onMounted 初始化阶段写入默认值覆盖服务端数据
 
+        // --- Active Tool System State ---
+        const ACTIVE_TOOL_VECTOR_TYPE = 'vector_memory';
+        const ACTIVE_TOOL_KEYWORD_TYPE = 'keyword_dialogue';
+        const ACTIVE_TOOL_WEB_TYPE = 'web_search';
+        const ACTIVE_TOOL_WORLD_TYPE = 'world_info';
+        const ACTIVE_TOOL_MIN_RESULT_COUNT = 8;
+        const ACTIVE_TOOL_DEFAULT_RESULT_COUNT = 8;
+        const ACTIVE_TOOL_MAX_RESULT_COUNT = 20;
+        const ACTIVE_TOOL_RESULT_COUNT_VERSION = 4;
+        const ACTIVE_TOOL_MAX_AUTO_CONTINUE = 4;
+        const ACTIVE_TOOL_WORLD_ACCESS_READ = 'read';
+        const ACTIVE_TOOL_WORLD_ACCESS_EDIT = 'edit';
+        const ACTIVE_TOOL_LATEST_USER_REMINDER = '每一次回复，你必须调用工具来获取需要的信息；一次回复可以分多行调用多个工具，每行只写一个工具标签。用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只检索一个信息点，禁止把多个问题塞进同一次工具调用。若工具返回结果不够完整且准确，你可以换更具体的检索内容或关键词继续调用工具；工具返回后再继续正文。必须确保人设、世界观、剧情记忆、同人资料和事实准确；不确定就先调用工具确认，尤其是同人角色卡，不能凭空猜和编造。';
+        const ACTIVE_TOOL_DEFAULT_DESCRIPTION = '每一次回复都必须先调用工具来获取需要的信息；当需要长期记忆、旧剧情、历史设定、过往关系、人物状态、物品来历或用户暗指内容时，在正文中单独输出 <tool_memory_add:具体检索内容> 主动向量检索长期记忆。禁止编造任何不真实、未在当前上下文或检索结果中出现过的信息；没有依据的设定、旧剧情、关系、物品来历、人物状态和事件细节都必须先用工具确认。用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只检索一个信息点；例如年龄、材质、武器、动力来源属于不同信息点，禁止合成一次长检索。可以在同一次回复中分多行输出多个工具标签，每行只写一个标签，用不同工具分别检索不同信息点。如果返回内容不够贴合或仍不够完整准确，请换更具体的关键词继续细化检索。继续补充检索时输出 <tool_memory_add:更具体的检索内容>，系统会把新结果追加到本轮已检索的工具结果后；如果前一次检索方向明显错误或需要重新开始，请输出 <tool_memory_cover:新的检索内容>，系统会用新结果覆盖本轮已检索的工具结果。工具结果返回后，如果依据已经足够，就继续正文；如果仍不够，继续细化调用工具。需要工具调用时，不需要输出 COT，也不要输出“我先查一下”“我先检索一下确保信息完整准确”等任何说明或铺垫，只输出工具标签即可。系统会把检索结果插入最后一条用户消息结尾，然后自动让你继续回答。';
+        const ACTIVE_TOOL_DEFAULT_DISPLAY_DESCRIPTION = '让角色在上下文信息不够明确时，主动检索向量记忆，适合找旧剧情、历史设定、人物关系、物品来历和用户暗指过的内容。';
+        const ACTIVE_TOOL_GREP_DEFAULT_DESCRIPTION = '当需要精准抓取当前对话历史里的原文内容时，在正文中单独输出 <tool_grep_add:关键词> 或 <tool_grep_cover:关键词>。系统会按关键词精确匹配用户与角色消息，返回包含关键词的原文片段。适合查找某句台词、某个名称、物品、地点、设定词、前文原句或具体对话细节。关键词要尽量写原文可能出现的词；用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只检索一个信息点，禁止把多个问题塞进同一次关键词检索。可以在同一次回复中分多行输出多个关键词检索或和其他工具混用，每行只写一个工具标签。需要工具调用时，不需要输出 COT，也不要输出说明或铺垫，只输出工具标签即可。';
+        const ACTIVE_TOOL_GREP_DEFAULT_DISPLAY_DESCRIPTION = '按关键词精准抓取当前对话历史里的原文片段，适合找台词、名称、物品、地点和具体前文。';
+        const ACTIVE_TOOL_WEB_DEFAULT_DESCRIPTION = '当本地上下文、角色记忆、关键词检索都不足以确认作品设定、同人资料、冷门角色、现实最新信息或网页资料时，在正文中单独输出 <tool_web_add:联网搜索内容或网页链接> 或 <tool_web_cover:联网搜索内容或网页链接>。系统会通过 Tavily 联网搜索并返回带来源链接的结果；如果调用内容是网页链接，系统会进入该链接读取更详细的网页正文。查询要具体，优先包含作品名、角色名、设定名、站点或语言关键词；不要把多个独立信息点塞进同一次联网搜索。';
+        const ACTIVE_TOOL_WEB_DEFAULT_DISPLAY_DESCRIPTION = '通过 Tavily 联网搜索补充外部资料，也能进入链接读取网页详情，适合同人设定、作品百科、冷门角色和最新信息。';
+        const ACTIVE_TOOL_WORLD_READ_DESCRIPTION = '当需要查看世界书时，在正文中单独输出 <tool_world_add:list> 或 <tool_world_add:read 世界书名字>。流程是先获取已开启世界书名字列表，再由你决定阅读哪些世界书的完整内容。当前为阅读模式，不能编辑世界书。系统只处理已开启且非系统内置的世界书。';
+        const ACTIVE_TOOL_WORLD_READ_DISPLAY_DESCRIPTION = '阅读已开启世界书：支持列出世界书列表，阅读世界书内容，不允许编辑世界书内容。';
+        const ACTIVE_TOOL_WORLD_EDIT_DESCRIPTION = '当需要查看或修改世界书时，在正文中单独输出 <tool_world_add:list>、<tool_world_add:read 世界书名字> 或 <tool_world_add:{"action":"edit","name":"世界书名字","operation":"replace","content":"新的完整内容"}>。流程是先获取已开启世界书名字列表，再由你决定阅读哪些世界书的完整内容，最后只在用户明确要求时编辑内容。系统只处理已开启且非系统内置的世界书。';
+        const ACTIVE_TOOL_WORLD_EDIT_DISPLAY_DESCRIPTION = '管理已开启世界书：支持列出世界书列表，阅读世界书内容，编辑世界书内容。';
+        const ACTIVE_TOOL_WORLD_DEFAULT_DESCRIPTION = ACTIVE_TOOL_WORLD_EDIT_DESCRIPTION;
+        const ACTIVE_TOOL_WORLD_DEFAULT_DISPLAY_DESCRIPTION = ACTIVE_TOOL_WORLD_EDIT_DISPLAY_DESCRIPTION;
+        const ACTIVE_TOOL_TAVILY_ENDPOINT = 'https://api.tavily.com/search';
+        const ACTIVE_TOOL_TAVILY_EXTRACT_ENDPOINT = 'https://api.tavily.com/extract';
+        const ACTIVE_TOOL_TAVILY_SEARCH_DEPTH = 'advanced';
+        const ACTIVE_TOOL_TAVILY_EXTRACT_MAX_URLS = ACTIVE_TOOL_DEFAULT_RESULT_COUNT;
+        const createDefaultActiveTool = () => ({
+            id: 'tool_memory',
+            name: '向量记忆主动检索',
+            enabled: false,
+            type: ACTIVE_TOOL_VECTOR_TYPE,
+            callName: 'tool_memory',
+            resultCount: ACTIVE_TOOL_DEFAULT_RESULT_COUNT,
+            resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+            description: ACTIVE_TOOL_DEFAULT_DESCRIPTION,
+            displayDescription: ACTIVE_TOOL_DEFAULT_DISPLAY_DESCRIPTION
+        });
+        const createDefaultGrepTool = () => ({
+            id: 'tool_grep',
+            name: '关键词检索',
+            enabled: false,
+            type: ACTIVE_TOOL_KEYWORD_TYPE,
+            callName: 'tool_grep',
+            resultCount: ACTIVE_TOOL_DEFAULT_RESULT_COUNT,
+            resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+            description: ACTIVE_TOOL_GREP_DEFAULT_DESCRIPTION,
+            displayDescription: ACTIVE_TOOL_GREP_DEFAULT_DISPLAY_DESCRIPTION
+        });
+        const createDefaultWebTool = () => ({
+            id: 'tool_web',
+            name: 'Tavily 联网搜索',
+            enabled: false,
+            type: ACTIVE_TOOL_WEB_TYPE,
+            callName: 'tool_web',
+            resultCount: ACTIVE_TOOL_DEFAULT_RESULT_COUNT,
+            resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+            description: ACTIVE_TOOL_WEB_DEFAULT_DESCRIPTION,
+            displayDescription: ACTIVE_TOOL_WEB_DEFAULT_DISPLAY_DESCRIPTION,
+            tavilyApiKey: ''
+        });
+
+        const normalizeWorldInfoAccessMode = (value) => (
+            String(value || '').trim().toLowerCase() === ACTIVE_TOOL_WORLD_ACCESS_READ
+                ? ACTIVE_TOOL_WORLD_ACCESS_READ
+                : ACTIVE_TOOL_WORLD_ACCESS_EDIT
+        );
+
+        const getWorldInfoToolDescription = (accessMode) => (
+            normalizeWorldInfoAccessMode(accessMode) === ACTIVE_TOOL_WORLD_ACCESS_READ
+                ? ACTIVE_TOOL_WORLD_READ_DESCRIPTION
+                : ACTIVE_TOOL_WORLD_EDIT_DESCRIPTION
+        );
+
+        const getWorldInfoToolDisplayDescription = (accessMode) => (
+            normalizeWorldInfoAccessMode(accessMode) === ACTIVE_TOOL_WORLD_ACCESS_READ
+                ? ACTIVE_TOOL_WORLD_READ_DISPLAY_DESCRIPTION
+                : ACTIVE_TOOL_WORLD_EDIT_DISPLAY_DESCRIPTION
+        );
+
+        const createDefaultWorldTool = () => ({
+            id: 'tool_world',
+            name: '世界书阅读/管理',
+            enabled: false,
+            type: ACTIVE_TOOL_WORLD_TYPE,
+            callName: 'tool_world',
+            resultCount: ACTIVE_TOOL_DEFAULT_RESULT_COUNT,
+            resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+            worldInfoAccessMode: ACTIVE_TOOL_WORLD_ACCESS_EDIT,
+            description: ACTIVE_TOOL_WORLD_DEFAULT_DESCRIPTION,
+            displayDescription: ACTIVE_TOOL_WORLD_DEFAULT_DISPLAY_DESCRIPTION
+        });
+        const getDefaultActiveToolDefinitions = () => [
+            createDefaultActiveTool(),
+            createDefaultGrepTool(),
+            createDefaultWebTool(),
+            createDefaultWorldTool()
+        ];
+        const activeTools = ref(getDefaultActiveToolDefinitions());
+
         const normalizeMemorySettings = () => {
             ['mode', 'model', `re${'rankEnabled'}`, `re${'rankModel'}`].forEach(key => {
                 delete memorySettings[key];
@@ -898,6 +1026,114 @@ createApp({
             memorySettings.vectorTopK = Number.isFinite(vectorTopK)
                 ? Math.max(MEMORY_VECTOR_MIN_TOP_K, Math.min(MEMORY_VECTOR_MAX_TOP_K, vectorTopK))
                 : MEMORY_VECTOR_DEFAULT_TOP_K;
+        };
+
+        const normalizeActiveToolCallName = (value) => {
+            const raw = String(value || '').trim();
+            const matched = raw.match(/^<\s*([^:\s>]+)\s*:/);
+            const source = matched ? matched[1] : raw;
+            return source
+                .replace(/[<>：:]/g, '')
+                .replace(/\s+/g, '_')
+                .trim() || 'tool_memory';
+        };
+
+        const normalizeActiveToolBaseCallName = (value) => normalizeActiveToolCallName(value)
+            .replace(/_(?:add|cover)$/i, '');
+
+        const getActiveToolResultCountMin = () => ACTIVE_TOOL_MIN_RESULT_COUNT;
+
+        const getActiveToolResultCountMax = () => ACTIVE_TOOL_MAX_RESULT_COUNT;
+
+        const normalizeActiveTool = (tool = {}) => {
+            const resultCount = Number(tool.resultCount);
+            const rawCallName = normalizeActiveToolBaseCallName(tool.callName || tool.callPattern || 'tool_memory');
+            const legacyWorldToolNames = ['tool_world_list', 'tool_world_read', 'tool_world_edit'];
+            const isLegacyWorldTool = legacyWorldToolNames.includes(rawCallName)
+                || ['world_info_list', 'world_info_read', 'world_info_edit'].includes(tool.type)
+                || ['tool_world_list', 'tool_world_read', 'tool_world_edit'].includes(tool.id);
+            const isLegacyWebTool = rawCallName === 'tool_web'
+                || ['web_search', 'tavily', 'tavily_search'].includes(tool.type)
+                || ['tool_web', 'tool_web_add', 'tool_web_cover'].includes(tool.id)
+                || /tavily|联网搜索/i.test(String(tool.name || ''));
+            const callName = isLegacyWorldTool ? 'tool_world' : (isLegacyWebTool ? 'tool_web' : rawCallName);
+            const defaultTool = getDefaultActiveToolDefinitions()
+                .find(item => item.id === (isLegacyWorldTool ? 'tool_world' : (isLegacyWebTool ? 'tool_web' : tool.id)) || item.callName === callName);
+            const fallback = defaultTool || createDefaultActiveTool();
+            const normalizedCallName = defaultTool ? defaultTool.callName : callName;
+            const resultCountVersion = Number(tool.resultCountVersion) || 1;
+            const isDefaultTool = !!defaultTool;
+            const normalizedType = isDefaultTool ? fallback.type : (tool.type || fallback.type || ACTIVE_TOOL_VECTOR_TYPE);
+            const description = isDefaultTool
+                ? fallback.description
+                : String(tool.description || fallback.description).trim();
+            const countMin = getActiveToolResultCountMin({ type: normalizedType });
+            const countMax = getActiveToolResultCountMax({ type: normalizedType });
+            let normalizedResultCount = Number.isFinite(resultCount)
+                ? Math.max(countMin, Math.min(countMax, Math.round(resultCount)))
+                : (fallback.resultCount || ACTIVE_TOOL_DEFAULT_RESULT_COUNT);
+            if (resultCountVersion < ACTIVE_TOOL_RESULT_COUNT_VERSION
+                && isDefaultTool
+                && normalizedCallName === fallback.callName
+                && normalizedType !== ACTIVE_TOOL_WEB_TYPE
+                && (!Number.isFinite(resultCount) || Math.round(resultCount) <= ACTIVE_TOOL_MIN_RESULT_COUNT || Math.round(resultCount) === 10)) {
+                normalizedResultCount = ACTIVE_TOOL_DEFAULT_RESULT_COUNT;
+            }
+            const normalized = {
+                id: isDefaultTool ? fallback.id : (tool.id || generateUUID()),
+                name: isDefaultTool ? fallback.name : (String(tool.name || fallback.name).trim() || fallback.name),
+                enabled: tool.enabled !== false,
+                type: normalizedType,
+                callName: normalizedCallName,
+                resultCount: normalizedResultCount,
+                resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+                description: description || fallback.description,
+                displayDescription: isDefaultTool
+                    ? fallback.displayDescription
+                    : (String(tool.displayDescription || fallback.displayDescription).trim() || fallback.displayDescription)
+            };
+            if (normalizedType === ACTIVE_TOOL_WEB_TYPE) {
+                normalized.tavilyApiKey = String(tool.tavilyApiKey || tool.apiKey || fallback.tavilyApiKey || '').trim();
+            }
+            if (normalizedType === ACTIVE_TOOL_WORLD_TYPE) {
+                normalized.worldInfoAccessMode = normalizeWorldInfoAccessMode(
+                    tool.worldInfoAccessMode
+                    || tool.worldInfoMode
+                    || tool.accessMode
+                    || fallback.worldInfoAccessMode
+                );
+                if (isDefaultTool) {
+                    normalized.description = getWorldInfoToolDescription(normalized.worldInfoAccessMode);
+                    normalized.displayDescription = getWorldInfoToolDisplayDescription(normalized.worldInfoAccessMode);
+                }
+            }
+            return normalized;
+        };
+
+        const normalizeActiveTools = (items = activeTools.value) => {
+            const normalized = [];
+            (Array.isArray(items) ? items : [])
+                .map(normalizeActiveTool)
+                .filter(tool => tool.callName)
+                .forEach(tool => {
+                    const duplicateIndex = normalized.findIndex(item => item.id === tool.id || item.callName === tool.callName);
+                    if (duplicateIndex >= 0) {
+                        normalized[duplicateIndex] = {
+                            ...normalized[duplicateIndex],
+                            enabled: normalized[duplicateIndex].enabled || tool.enabled
+                        };
+                        return;
+                    }
+                    normalized.push(tool);
+                });
+            getDefaultActiveToolDefinitions().forEach(defaultTool => {
+                const hasDefaultTool = normalized.some(tool => tool.id === defaultTool.id || tool.callName === defaultTool.callName);
+                if (!hasDefaultTool) normalized.push(defaultTool);
+            });
+            if (JSON.stringify(activeTools.value) !== JSON.stringify(normalized)) {
+                activeTools.value = normalized;
+            }
+            return normalized;
         };
 
         const getMemoryEmptyTurnsKey = (uuid) => {
@@ -1065,6 +1301,7 @@ createApp({
         const editingUiTemplate = reactive({ id: undefined, data: {} });
         const editingRegex = reactive({ id: undefined, data: {} });
         const editingWorldInfo = reactive({ id: undefined, data: {} });
+        const editingActiveTool = reactive({ id: undefined, data: {} });
 
         const sysInstruction = ref('');
         const showInstructionPanel = ref(false);
@@ -1402,6 +1639,13 @@ createApp({
             await setScopedStoredValue('memories', currentCharacter.value.uuid, await compactMemoriesForStorageAsync(memories.value), { clone: false });
         };
 
+        const saveWorldInfoStateNow = async () => {
+            if (!db) await initDB();
+            await setStoredValue('characters', characters.value);
+            await setStoredValue('worldinfo', worldInfo.value);
+            await setStoredValue('global_worldinfo', globalWorldInfo.value);
+        };
+
         const saveData = async (options = {}) => {
             const { saveMemories = true } = options;
             try {
@@ -1416,6 +1660,7 @@ createApp({
                 await setStoredValue('global_worldinfo', globalWorldInfo.value);
                 await setStoredValue('worldinfo_settings', worldInfoSettings);
                 await setStoredValue('global_ui_templates', globalUiTemplates.value);
+                await setStoredValue('active_tools', normalizeActiveTools(), { clone: false });
                 // await setStoredValue('recent_times', recentGenerationTimes.value); // Deprecated: Saved in character
 
                 // 守卫：初始化完成前不写入用户/记忆数据，防止默认值覆盖服务端已有数据
@@ -1615,6 +1860,9 @@ createApp({
 
                 const savedGlobalUiTemplates = await getStoredValue('global_ui_templates');
                 if (savedGlobalUiTemplates) globalUiTemplates.value = savedGlobalUiTemplates.map(template => normalizeUiTemplate({ ...template, scope: 'global' }));
+
+                const savedActiveTools = await getStoredValue('active_tools');
+                normalizeActiveTools(savedActiveTools || activeTools.value);
 
                 const savedWISettings = await getStoredValue('worldinfo_settings');
                 if (savedWISettings) {
@@ -1927,7 +2175,7 @@ createApp({
         }, 1000);
 
         // Watch for changes to auto-save
-        watch([characters, settings, presets, regexScripts, globalRegexScripts, worldInfo, globalWorldInfo, globalUiTemplates, user, recentGenerationTimes], () => {
+        watch([characters, settings, presets, regexScripts, globalRegexScripts, worldInfo, globalWorldInfo, globalUiTemplates, activeTools, user, recentGenerationTimes], () => {
             debouncedSave();
         }, { deep: true });
 
@@ -3111,6 +3359,7 @@ ${content}
             return !!(
                 msg.reasoning
                 || parseCot(msg.content || '').cot
+                || (Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0)
                 || msg.isEditing_Message
                 || messageUsesHtmlFrame(msg)
                 || messageHasUiTemplateBlocks(msg)
@@ -3565,15 +3814,44 @@ ${content}
         };
 
         // Chat Logic
+        const markActiveToolInlineWorkCancelled = () => {
+            let changed = false;
+            chatHistory.value.forEach(msg => {
+                if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.toolCalls)) return;
+                msg.toolCalls.forEach(toolCall => {
+                    if (!toolCall || !['receiving', 'queued', 'running', 'continuing'].includes(toolCall.status)) return;
+                    toolCall.status = 'error';
+                    toolCall.error = '生成已中止';
+                    toolCall.resultText = toolCall.resultText || toolCall.error;
+                    changed = true;
+                });
+            });
+            if (changed) {
+                activeToolContinuationMessageId.value = null;
+                activeToolContinuationToolCallId.value = null;
+                activeToolContinuationHasResponse.value = false;
+                activeToolHandoffPending.value = false;
+                activeToolContinuationPending.value = false;
+                saveChatHistoryNow();
+            }
+            return changed;
+        };
+
         const stopGeneration = () => {
             abortUiTemplateUpdate();
             if (abortController.value) {
                 abortSafely(abortController.value, 'Generation cancelled by user');
             }
+            if (activeToolQueueAbortController) {
+                abortSafely(activeToolQueueAbortController, 'Generation cancelled by user');
+            }
+            if (hasActiveToolInlineWork.value) {
+                markActiveToolInlineWorkCancelled();
+            }
         };
 
         const sendMessage = async () => {
-            if (!userInput.value.trim() || isGenerating.value) return;
+            if (!userInput.value.trim() || isConversationBusy.value) return;
 
             const content = userInput.value.trim();
 
@@ -3969,6 +4247,7 @@ ${content}
                     recentGenerationTimes.value = recentGenerationTimes.value.filter(t => (t.id || t) !== msg.id);
                 }
                 const uiCleanup = pruneUiTemplateChangesFromTurn(affectedTurn);
+                const worldInfoRollback = rollbackWorldInfoMutationsFromMessages([msg]);
                 // 只删除与该楼层关联的记忆，而非全部清空
                 if (msg && msg.role === 'assistant') {
                     // 计算该 assistant 消息对应的轮次 (turn)
@@ -3976,14 +4255,20 @@ ${content}
                     const removed = await filterMemoriesAsync(m => (m.turn || 0) !== turnAtIndex);
                     chatHistory.value.splice(index, 1);
                     await saveConversationMutationNow({ saveTemplateRuntime: uiCleanup.logs > 0 || uiCleanup.blocks > 0 });
+                    if (worldInfoRollback.applied > 0) await saveWorldInfoStateNow();
                     const extras = [];
                     if (removed > 0) extras.push(`${removed} 个关联分片`);
                     if (uiCleanup.logs > 0 || uiCleanup.blocks > 0) extras.push('变量模板');
+                    if (worldInfoRollback.applied > 0) extras.push(`${worldInfoRollback.applied} 处世界书改动`);
                     showToast(extras.length ? `消息已删除，清除了 ${extras.join('、')}` : '消息已删除', 'success');
                 } else {
                     chatHistory.value.splice(index, 1);
                     await saveConversationMutationNow({ saveTemplateRuntime: uiCleanup.logs > 0 || uiCleanup.blocks > 0 });
-                    showToast(uiCleanup.logs > 0 || uiCleanup.blocks > 0 ? '消息已删除，变量模板已同步回退' : '消息已删除', 'success');
+                    if (worldInfoRollback.applied > 0) await saveWorldInfoStateNow();
+                    const extras = [];
+                    if (uiCleanup.logs > 0 || uiCleanup.blocks > 0) extras.push('变量模板');
+                    if (worldInfoRollback.applied > 0) extras.push(`${worldInfoRollback.applied} 处世界书改动`);
+                    showToast(extras.length ? `消息已删除，已回退 ${extras.join('、')}` : '消息已删除', 'success');
                 }
             });
         };
@@ -4016,12 +4301,14 @@ ${content}
                     const uiTurnAtIndex = turnAtIndex;
                     await filterMemoriesAsync(m => (m.turn || 0) < turnAtIndex);
                     const uiCleanup = pruneUiTemplateChangesFromTurn(uiTurnAtIndex);
+                    const worldInfoRollback = rollbackWorldInfoMutationsFromMessages(chatHistory.value.slice(index));
                     // Remove timing record for the message being regenerated
                     if (msg && msg.id) {
                         recentGenerationTimes.value = recentGenerationTimes.value.filter(t => (t.id || t) !== msg.id);
                     }
                     chatHistory.value = chatHistory.value.slice(0, index);
-                    saveConversationMutationNow({ saveTemplateRuntime: uiCleanup.logs > 0 || uiCleanup.blocks > 0 });
+                    await saveConversationMutationNow({ saveTemplateRuntime: uiCleanup.logs > 0 || uiCleanup.blocks > 0 });
+                    if (worldInfoRollback.applied > 0) await saveWorldInfoStateNow();
                     await generateResponse(startTime);
                 });
             }
@@ -4055,19 +4342,185 @@ ${content}
             console.groupEnd();
         };
 
+        const getEnabledActiveTools = () => normalizeActiveTools()
+            .filter(tool => tool.enabled !== false && tool.callName);
+
+        const isVectorActiveTool = (tool) => tool?.type === ACTIVE_TOOL_VECTOR_TYPE
+            || normalizeActiveToolBaseCallName(tool?.callName) === 'tool_memory';
+
+        const isKeywordActiveTool = (tool) => tool?.type === ACTIVE_TOOL_KEYWORD_TYPE
+            || normalizeActiveToolBaseCallName(tool?.callName) === 'tool_grep';
+
+        const isWebActiveTool = (tool) => tool?.type === ACTIVE_TOOL_WEB_TYPE
+            || normalizeActiveToolBaseCallName(tool?.callName) === 'tool_web'
+            || ['tool_web', 'tool_web_add', 'tool_web_cover'].includes(tool?.id)
+            || /tavily|联网搜索/i.test(String(tool?.name || ''));
+
+        const isWorldInfoActiveTool = (tool) => tool?.type === ACTIVE_TOOL_WORLD_TYPE
+            || ['tool_world', 'tool_world_list', 'tool_world_read', 'tool_world_edit'].includes(normalizeActiveToolBaseCallName(tool?.callName));
+
+        const getWorldInfoAccessMode = (tool) => normalizeWorldInfoAccessMode(tool?.worldInfoAccessMode || tool?.worldInfoMode || tool?.accessMode);
+
+        const canEditWorldInfoWithTool = (tool) => getWorldInfoAccessMode(tool) === ACTIVE_TOOL_WORLD_ACCESS_EDIT;
+
+        const getActiveToolDisplayDescription = (tool) => {
+            if (isWorldInfoActiveTool(tool)) {
+                return getWorldInfoToolDisplayDescription(getWorldInfoAccessMode(tool));
+            }
+            return tool?.displayDescription || '暂无说明';
+        };
+
+        const canConfigureActiveToolResultCount = (tool) => !isWorldInfoActiveTool(tool);
+
+        const shouldSuppressStandardVectorMemoryRecall = () => getEnabledActiveTools()
+            .some(tool => isVectorActiveTool(tool) && (tool.id === 'tool_memory' || tool.callName === 'tool_memory'));
+
+        const appendActiveToolReminderToLatestUserMessage = (msgArray) => {
+            if (getEnabledActiveTools().length === 0) return msgArray;
+            const latestUserMessage = [...msgArray].reverse().find(message => {
+                const content = String(message?.content || '');
+                return message?.role === 'user'
+                    && content.trim()
+                    && !isRoleMemoryContextContent(content)
+                    && !content.includes('<active_tool_results>');
+            });
+            if (!latestUserMessage) return msgArray;
+
+            const currentContent = String(latestUserMessage.content || '').trimEnd();
+            if (!currentContent.includes(ACTIVE_TOOL_LATEST_USER_REMINDER)) {
+                latestUserMessage.content = currentContent
+                    ? `${currentContent}\n${ACTIVE_TOOL_LATEST_USER_REMINDER}`
+                    : ACTIVE_TOOL_LATEST_USER_REMINDER;
+            }
+            return msgArray;
+        };
+
+        const getActiveToolCallLabels = (tool) => {
+            const baseCallName = normalizeActiveToolBaseCallName(tool?.callName || 'tool_memory');
+            return {
+                add: `${baseCallName}_add`,
+                cover: `${baseCallName}_cover`
+            };
+        };
+
+        const buildActiveToolSystemPrompt = () => {
+            const tools = getEnabledActiveTools();
+            if (tools.length === 0) return '';
+
+            const toolLines = tools.map(tool => {
+                const count = Number(tool.resultCount) || ACTIVE_TOOL_DEFAULT_RESULT_COUNT;
+                const labels = getActiveToolCallLabels(tool);
+                const addCallName = escapeXmlAttribute(labels.add);
+                const coverCallName = escapeXmlAttribute(labels.cover);
+                const keywordTool = isKeywordActiveTool(tool);
+                const webTool = isWebActiveTool(tool);
+                const worldTool = isWorldInfoActiveTool(tool);
+                if (worldTool) {
+                    const worldCanEdit = canEditWorldInfoWithTool(tool);
+                    const callPlaceholder = worldCanEdit ? 'list / read 世界书名字 / JSON编辑参数' : 'list / read 世界书名字';
+                    const returnLabel = worldCanEdit ? '已开启世界书列表、正文或编辑结果' : '已开启世界书列表或正文';
+                    const toolRules = worldCanEdit ? [
+                        `用途：当你需要查看或修改当前已开启世界书时，使用本工具。系统只处理已开启且非系统内置的世界书。`,
+                        `固定流程：先输出 <${addCallName}:list> 获取已开启世界书名字列表；再由你从名字里判断哪些相关，输出 <${addCallName}:read 世界书名字> 阅读目标世界书完整内容；只有用户明确要求修改时，最后再编辑。`,
+                        `列表：<${addCallName}:list> 只返回全部已开启世界书的名字，一行一个，不返回关键词、预览、位置或内容，也不使用返回条数限制。`,
+                        `阅读：<${addCallName}:read 世界书名字> 或 <${addCallName}:{"action":"read","name":"世界书名字"}> 会返回对应世界书完整内容。可以按需要多行读取多个世界书。`,
+                        `编辑：请输出 JSON，例如 <${addCallName}:{"action":"edit","name":"世界书名字","operation":"replace","content":"新的完整内容"}>。operation 可用 replace 覆盖全文、append 追加到末尾、prepend 插入到开头、replace_text 局部替换。`,
+                        `局部替换：格式为 <${addCallName}:{"action":"edit","name":"世界书名字","operation":"replace_text","find":"旧文本","replace":"新文本"}>。如果旧文本不存在，系统会拒绝编辑。`,
+                        `安全规则：不要擅自改世界书；如果目标不唯一、参数不完整、或目标是系统内置/未开启条目，系统会拒绝编辑。`,
+                        `特殊字符：如果新内容里必须包含 > 或 <，请在 JSON 字符串里写成 \\u003e 或 \\u003c，避免破坏工具标签。`
+                    ] : [
+                        `用途：当你需要查看当前已开启世界书时，使用本工具。系统只处理已开启且非系统内置的世界书。`,
+                        `固定流程：先输出 <${addCallName}:list> 获取已开启世界书名字列表；再由你从名字里判断哪些相关，输出 <${addCallName}:read 世界书名字> 阅读目标世界书完整内容。`,
+                        `列表：<${addCallName}:list> 只返回全部已开启世界书的名字，一行一个，不返回关键词、预览、位置或内容，也不使用返回条数限制。`,
+                        `阅读：<${addCallName}:read 世界书名字> 或 <${addCallName}:{"action":"read","name":"世界书名字"}> 会返回对应世界书完整内容。可以按需要多行读取多个世界书。`,
+                        `权限：当前工具是阅读模式，不能编辑世界书。不要输出 action 为 edit 的 JSON，也不要尝试修改内容。`
+                    ];
+                    return [
+                        `<tool name="${escapeXmlAttribute(tool.name)}" call_add="<${addCallName}:${escapeXmlAttribute(callPlaceholder)}>" call_cover="<${coverCallName}:${escapeXmlAttribute(callPlaceholder)}>" returns="${escapeXmlAttribute(returnLabel)}">`,
+                        `说明：${tool.description}`,
+                        ...toolRules,
+                        `注意：需要工具调用时，不需要输出 COT，也不要输出说明或铺垫，只输出工具标签即可。不要把调用标签写进 <cot>、<think> 或原生思考；调用后不要同时回答，等待系统返回结果后再继续正文。`,
+                        `</tool>`
+                    ].join('\n');
+                }
+                const callPlaceholder = webTool ? '联网搜索内容或网页链接' : (keywordTool ? '关键词' : '检索内容');
+                const returnLabel = webTool ? `${count}条联网搜索结果，或网页正文` : (keywordTool ? `${count}条对话片段` : `${count}条向量记忆`);
+                const descriptionFallback = webTool
+                    ? '通过 Tavily 联网搜索外部网页资料，返回带来源链接的搜索结果；当调用内容是网页链接时，读取该网页正文。'
+                    : keywordTool
+                    ? '按关键词精确匹配当前对话历史，抓取包含关键词的原文片段。'
+                    : '按调用内容检索长期向量记忆。';
+                const toolRules = webTool ? [
+                    `用途：当本地上下文、角色记忆、关键词检索或向量记忆不足以确认作品设定、同人资料、冷门角色、现实最新信息、网页资料来源时，使用本工具联网搜索。`,
+                    `先搜索：第一次查网页资料时，请用关键词或问题调用 <${addCallName}:联网搜索内容>，先拿到标题、链接和摘要。可以像检索工具一样在同一次回复中分多行输出多个搜索调用，每个搜索调用只查一个独立信息点。不要第一步就编造链接。`,
+                    `深入网页：看完搜索结果后，如果标题和摘要仍不足以确认细节，请从搜索结果里选择一个或多个最相关的真实 URL，再单独输出 <${addCallName}:https://...> 读取网页正文。进入网页也可以像检索工具一样多次调用；每行只放一个工具标签，或在同一个标签里放少量同一主题的 URL。只有需要更完整证据时才进入网页，不要自动读取全部链接。`,
+                    `追加调用：当你需要补充更多联网资料、换关键词、查另一个独立信息点、或进入一个/多个搜索结果链接读取正文时，在最终正文中单独输出 <${addCallName}:联网搜索内容或网页链接>。系统会把新结果追加到本轮已经检索过的工具结果后。`,
+                    `覆盖调用：当前一次搜索方向明显错误、结果偏题、或你想重新开始本轮工具结果时，在最终正文中单独输出 <${coverCallName}:联网搜索内容或网页链接>。系统会用新结果覆盖本轮已经检索过的工具结果。`,
+                    `搜索词规则：查询要具体，优先包含作品名、角色名、设定名、站点名、语言关键词或别名。用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只搜索一个信息点，禁止把多个问题塞进同一次联网搜索。`,
+                    `来源规则：联网结果包含标题、链接和摘要；网页正文结果包含从该链接抽取的正文。继续回答时优先依据这些来源，不要把搜索结果或网页正文没有支持的内容说成事实。`,
+                    `多工具调用：可以在同一次回复中分多行输出多个搜索或网页读取标签，每行只写一个标签，也可以和其他工具混用；系统会按出现顺序逐个执行全部工具标签。`
+                ] : keywordTool ? [
+                    `用途：当你需要精准抓取当前对话历史里的原文、查找某个名称、台词、物品、地点、设定词、前文原句或具体对话细节时，使用本工具。`,
+                    `追加调用：当你需要补充更多关键词结果时，在最终正文中单独输出 <${addCallName}:关键词>。系统会把新结果追加到本轮已经检索过的工具结果后。`,
+                    `覆盖调用：当前一次关键词方向明显错误、结果偏题、或你想重新开始本轮工具结果时，在最终正文中单独输出 <${coverCallName}:关键词>。系统会用新结果覆盖本轮已经检索过的工具结果。`,
+                    `关键词规则：关键词要尽量写原文可能出现的词；用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只检索一个信息点，禁止把多个问题塞进同一次关键词检索。只有同一信息点的同义词或原文别名才可以放在同一次关键词里。`,
+                    `多工具调用：可以在同一次回复中分多行输出多个工具标签，每行只写一个标签；系统会按出现顺序逐个执行全部工具标签。`,
+                    `返回位置：工具返回内容会被系统插入最后一条用户消息结尾，然后自动触发你继续生成；继续回答时把它当作原文对话证据，不要复述工具标签。`
+                ] : [
+                    `每轮工具调用：每一次回复都必须先调用工具来获取需要的信息；当需要长期记忆、旧剧情、历史设定、过往关系、人物状态、物品来历或用户暗指内容时，调用本工具进行主动向量检索。工具结果返回后，如果依据已经足够，就继续正文；如果仍不够，继续细化调用工具。`,
+                    `真实性规则：禁止编造任何不真实、未在当前上下文或检索结果中出现过的信息。没有依据的设定、旧剧情、关系、物品来历、人物状态和事件细节都必须先检索确认，不要凭空猜。`,
+                    `追加调用：当你需要补充检索、细化检索、扩展同一问题的信息时，在最终正文中单独输出 <${addCallName}:检索内容>。系统会把新检索结果追加到本轮已经检索过的工具结果后。`,
+                    `覆盖调用：当前一次检索方向明显错误、结果偏题、或你想重新开始本轮工具结果时，在最终正文中单独输出 <${coverCallName}:检索内容>。系统会用新检索结果覆盖本轮已经检索过的工具结果。`,
+                    `检索内容要具体，优先写人物名、事件、物品、地点、时间线、关键词。用户问题包含多个独立信息点时，必须拆开逐项调用，每个工具标签只检索一个信息点；例如年龄、材质、武器、动力来源属于不同信息点，禁止合成一次长检索。第一次检索通常使用追加调用；只有需要重开检索时才使用覆盖调用。`,
+                    `多工具调用：可以在同一次回复中分多行输出多个工具标签，每行只写一个标签，也可以和其他工具混用；系统会按出现顺序逐个执行全部工具标签。`,
+                    `细化检索：系统返回结果后，如果结果不够完美、不够贴合、仍然无法让你确认答案，请不要急着回答；请换更具体的检索内容继续检索，避免重复完全相同的检索内容。`,
+                    `返回位置：工具返回内容会被系统插入最后一条用户消息结尾，然后自动触发你继续生成；继续回答时把它当作系统提供的记忆参考，不要复述工具标签。追加调用会保留旧结果，覆盖调用会替换旧结果。`
+                ];
+                return [
+                    `<tool name="${escapeXmlAttribute(tool.name)}" call_add="<${addCallName}:${callPlaceholder}>" call_cover="<${coverCallName}:${callPlaceholder}>" returns="${returnLabel}">`,
+                    `说明：${tool.description || descriptionFallback}`,
+                    ...toolRules,
+                    `注意：需要工具调用时，不需要输出 COT，也不要输出“我先查一下”“我先检索一下确保信息完整准确”等任何说明或铺垫，只输出工具标签即可。不要把调用标签写进 <cot>、<think> 或原生思考；调用后不要同时回答，等待系统返回结果后再继续正文。`,
+                    `</tool>`
+                ].join('\n');
+            }).join('\n\n');
+            return [
+                '<active_tools>',
+                '以下是可由正文主动触发的工具。它们不是传统 function/tool call，而是由最终正文中的标签触发。',
+                ACTIVE_TOOL_LATEST_USER_REMINDER,
+                toolLines,
+                '</active_tools>'
+            ].filter(Boolean).join('\n');
+        };
+
         // Refactored generation logic
         let _wasCancelled = false;
-        const generateResponse = async (startTime = null) => {
+        const generateResponse = async (startTime = null, options = {}) => {
             if (isGenerating.value) return;
+            const activeToolDepth = Number(options.activeToolDepth) || 0;
+            const continueAssistantMessageId = options.continueAssistantMessageId || null;
+            const continuationToolCallId = options.continuationToolCallId || null;
 
             if (!currentCharacter.value) {
                 showToast('请先选择一个角色', 'error');
                 return;
             }
 
+            const continuationTargetMessage = continueAssistantMessageId
+                ? chatHistory.value.find(msg => msg && msg.role === 'assistant' && msg.id === continueAssistantMessageId) || null
+                : null;
+            if (!continuationTargetMessage && activeToolDepth === 0) {
+                resetActiveToolResultContext();
+            }
+
             isGenerating.value = true;
-            isReceiving.value = false;
+            // 工具续写时内容会回填到旧气泡里，这里先占住“已在接收”的状态，
+            // 避免底部全局 typing 占位气泡冒出来。
+            isReceiving.value = !!continuationTargetMessage;
             isThinking.value = false;
+            activeToolContinuationMessageId.value = continuationTargetMessage?.id || null;
+            activeToolContinuationToolCallId.value = continuationTargetMessage ? continuationToolCallId : null;
+            activeToolContinuationHasResponse.value = false;
             abortController.value = new AbortController();
             let generationStartTime = startTime || Date.now();
 
@@ -4348,6 +4801,9 @@ ${content}
             // 6. User Info (Moved to end)
             systemPromptParts.push(userPrompt);
 
+            const activeToolPrompt = buildActiveToolSystemPrompt();
+            if (activeToolPrompt) systemPromptParts.push(activeToolPrompt);
+
             const systemPrompt = systemPromptParts.join('\n\n');
 
             // Base Messages
@@ -4530,11 +4986,14 @@ ${content}
                         content: cleanContent
                     };
                 })
+                .filter(m => String(m.content || '').trim())
             );
 
             let selectedVectorMemories = [];
-            if (memorySettings.enabled && memories.value.length > 0) {
-                selectedVectorMemories = await selectVectorMemoriesForContext(abortController.value.signal);
+            if (memorySettings.enabled && memories.value.length > 0 && !shouldSuppressStandardVectorMemoryRecall()) {
+                selectedVectorMemories = await selectVectorMemoriesForContext(abortController.value.signal, {
+                    excludedTurns: getRetainedRecentMemoryTurns(postprocessedChatHistory)
+                });
             }
 
             // Handle @D (At Depth) and other message-level injections
@@ -4572,7 +5031,7 @@ ${content}
 
                 // Memory Injection (at_depth style, grouped by turn)
                 if (memorySettings.enabled && selectedVectorMemories.length > 0) {
-                    const enabledMemories = sortVectorMemoriesByTime(selectedVectorMemories);
+                    const enabledMemories = mergeRepeatedTurnVectorMemories(selectedVectorMemories);
 
                     if (enabledMemories.length > 0) {
                         const formatMemoryLine = (m) => {
@@ -4585,7 +5044,7 @@ ${content}
                             return [
                                 `  ${fragmentTag}`,
                                 fragmentText,
-                                `  ${fragmentTag}`
+                                `  </memory_fragment>`
                             ].join('\n');
                         };
 
@@ -4646,6 +5105,15 @@ ${content}
             };
 
             messages = processMessageInjections(messages);
+            messages = appendActiveToolReminderToLatestUserMessage(messages);
+            const activeToolContextPayload = pendingActiveToolContext.value || (activeToolDepth > 0 ? buildActiveToolResultPayload() : '');
+            if (activeToolContextPayload) {
+                messages.push({
+                    role: 'user',
+                    content: activeToolContextPayload
+                });
+                pendingActiveToolContext.value = '';
+            }
             appendDeepSeekThinkingInstruction(messages, safeTargetLimit);
             messages = postprocessContextMessages(messages);
 
@@ -4792,6 +5260,101 @@ ${content}
 
             let generatedAssistantMessageId = null;
             let assistantMessage = null;
+            let continuingAssistantMessage = continuationTargetMessage;
+            let continuationToolCall = null;
+            let continuationContentStarted = false;
+            let continuationReasoningStarted = false;
+
+            if (continuingAssistantMessage && continuationToolCallId && Array.isArray(continuingAssistantMessage.toolCalls)) {
+                continuationToolCall = continuingAssistantMessage.toolCalls.find(call => call && call.id === continuationToolCallId) || null;
+                if (continuationToolCall && typeof continuationToolCall.reasoning !== 'string') continuationToolCall.reasoning = '';
+            }
+
+            const prepareAssistantMessageForAppend = (message) => {
+                if (!message) return null;
+                if (!message.id) message.id = generateUUID();
+                if (typeof message.content !== 'string') message.content = '';
+                if (typeof message.reasoning !== 'string') message.reasoning = '';
+                if (message.isCotOpen === undefined) message.isCotOpen = false;
+                if (message.isReasoningOpen === undefined) message.isReasoningOpen = true;
+                if (message.isReasoningUserToggled === undefined) message.isReasoningUserToggled = false;
+                if (message.isReasoningAutoCollapsed === undefined) message.isReasoningAutoCollapsed = false;
+                message.shouldAnimate = !continuingAssistantMessage;
+                return message;
+            };
+
+            const appendAssistantText = (message, field, text) => {
+                if (!message || !text) return;
+                const isContinuation = continuingAssistantMessage && message.id === continuingAssistantMessage.id;
+                const startedKey = field === 'reasoning' ? 'continuationReasoningStarted' : 'continuationContentStarted';
+                const hasStarted = field === 'reasoning' ? continuationReasoningStarted : continuationContentStarted;
+
+                if (field === 'content' && message._activeToolCaptureActive) {
+                    message._activeToolPendingText = `${message._activeToolPendingText || ''}${text}`;
+                    promoteActiveToolCallsFromAssistant(message);
+                    if (isContinuation) {
+                        if (!hasStarted) continuationContentStarted = true;
+                        activeToolContinuationHasResponse.value = true;
+                    }
+                    return;
+                }
+
+                const existing = String(message[field] || '');
+
+                if (isContinuation && !hasStarted && existing.trim()) {
+                    message[field] = existing.replace(/\s+$/, '') + '\n\n' + text;
+                } else {
+                    message[field] = existing + text;
+                }
+
+                if (isContinuation && !hasStarted) {
+                    if (startedKey === 'continuationReasoningStarted') continuationReasoningStarted = true;
+                    else continuationContentStarted = true;
+                }
+                if (field === 'content') {
+                    promoteActiveToolCallsFromAssistant(message);
+                }
+                if (isContinuation) activeToolContinuationHasResponse.value = true;
+            };
+
+            const appendAssistantReasoning = (message, text) => {
+                if (!message || !text) return;
+                if (continuationToolCall && continuingAssistantMessage && message.id === continuingAssistantMessage.id) {
+                    appendAssistantText(message, 'reasoning', text);
+                    return;
+                }
+                appendAssistantText(message, 'reasoning', text);
+            };
+
+            const createAssistantMessage = (content = '', reasoning = '') => reactive({
+                role: 'assistant',
+                name: currentCharacter.value.name,
+                content: content || '',
+                reasoning: reasoning || '',
+                id: generateUUID(),
+                shouldAnimate: true,
+                isCotOpen: false,
+                isReasoningOpen: true,
+                isReasoningUserToggled: false,
+                isReasoningAutoCollapsed: false
+            });
+
+            const ensureAssistantMessage = (content = '', reasoning = '') => {
+                if (assistantMessage) return assistantMessage;
+                if (continuingAssistantMessage) {
+                    assistantMessage = prepareAssistantMessageForAppend(continuingAssistantMessage);
+                    if (reasoning) appendAssistantReasoning(assistantMessage, reasoning);
+                    if (content) appendAssistantText(assistantMessage, 'content', content);
+                    isReceiving.value = true;
+                    return assistantMessage;
+                }
+
+                assistantMessage = createAssistantMessage(content, reasoning);
+                promoteActiveToolCallsFromAssistant(assistantMessage);
+                chatHistory.value.push(assistantMessage);
+                isReceiving.value = true;
+                return assistantMessage;
+            };
 
             try {
                         const url = settings.apiUrl.endsWith('/v1') ? `${settings.apiUrl}/chat/completions` : `${settings.apiUrl}/v1/chat/completions`;
@@ -4843,7 +5406,7 @@ ${content}
                             let nativeReasoningFlushRaf = null;
                             const applyPendingNativeReasoning = () => {
                                 if (!assistantMessage || !pendingNativeReasoning) return;
-                                assistantMessage.reasoning += pendingNativeReasoning;
+                                appendAssistantReasoning(assistantMessage, pendingNativeReasoning);
                                 pendingNativeReasoning = '';
                             };
                             const scheduleNativeReasoningFlush = () => {
@@ -4897,20 +5460,7 @@ ${content}
                                                     if (reasoning) {
                                                         isThinking.value = true;
                                                     }
-                                                    assistantMessage = reactive({
-                                                        role: 'assistant',
-                                                        name: currentCharacter.value.name,
-                                                        content: content || '',
-                                                        reasoning: reasoning || '',
-                                                        id: generateUUID(), // Assign ID
-                                                        shouldAnimate: true, // Enable animation for new stream
-                                                        isCotOpen: false, // Default collapsed for CoT
-                                                        isReasoningOpen: true,
-                                                        isReasoningUserToggled: false,
-                                                        isReasoningAutoCollapsed: false
-                                                    });
-                                                    chatHistory.value.push(assistantMessage);
-                                                    isReceiving.value = true;
+                                                    assistantMessage = ensureAssistantMessage(content, reasoning);
                                                     seededContent = !!content;
                                                     seededReasoning = !!reasoning;
                                                     if (seededContent) {
@@ -4928,7 +5478,7 @@ ${content}
 
                                                 if (content && !seededContent) {
                                                     flushNativeReasoning();
-                                                    assistantMessage.content += content;
+                                                    appendAssistantText(assistantMessage, 'content', content);
                                                     isThinking.value = false;
                                                     collapseNativeReasoning(assistantMessage);
                                                 }
@@ -4968,19 +5518,13 @@ ${content}
                                 }
 
                                 if (content || reasoning) {
-                                    assistantMessage = reactive({
-                                        role: 'assistant',
-                                        name: currentCharacter.value.name,
-                                        content: content,
-                                        reasoning: reasoning,
-                                        id: generateUUID(),
-                                        shouldAnimate: true,
-                                        isCotOpen: false,
-                                        isReasoningOpen: !(reasoning && content),
-                                        isReasoningUserToggled: false,
-                                        isReasoningAutoCollapsed: !!(reasoning && content)
-                                    });
-                                    chatHistory.value.push(assistantMessage);
+                                    assistantMessage = ensureAssistantMessage(content, reasoning);
+                                    if (!continuingAssistantMessage) {
+                                        assistantMessage.isReasoningOpen = !(reasoning && content);
+                                        assistantMessage.isReasoningAutoCollapsed = !!(reasoning && content);
+                                    } else if (reasoning && content) {
+                                        collapseNativeReasoning(assistantMessage);
+                                    }
                                     // scrollToBottom(); // Removed auto-scroll during generation
                                 }
                             } catch (e) {
@@ -5018,19 +5562,13 @@ ${content}
                                 }
 
                                 if (content || finalReasoning) {
-                                    assistantMessage = reactive({
-                                        role: 'assistant',
-                                        name: currentCharacter.value.name,
-                                        content: content,
-                                        reasoning: finalReasoning,
-                                        id: generateUUID(),
-                                        shouldAnimate: true,
-                                        isCotOpen: false,
-                                        isReasoningOpen: !(finalReasoning && content),
-                                        isReasoningUserToggled: false,
-                                        isReasoningAutoCollapsed: !!(finalReasoning && content)
-                                    });
-                                    chatHistory.value.push(assistantMessage);
+                                    assistantMessage = ensureAssistantMessage(content, finalReasoning);
+                                    if (!continuingAssistantMessage) {
+                                        assistantMessage.isReasoningOpen = !(finalReasoning && content);
+                                        assistantMessage.isReasoningAutoCollapsed = !!(finalReasoning && content);
+                                    } else if (finalReasoning && content) {
+                                        collapseNativeReasoning(assistantMessage);
+                                    }
 
                                     // scrollToBottom(); // Removed auto-scroll during generation
                                 }
@@ -5083,15 +5621,37 @@ ${content}
                     } else {
                         chatHistory.value.push({ role: 'system', name: currentCharacter.value.name, content: '生成已中止', skipReveal: true });
                     }
+                } else if (continuingAssistantMessage) {
+                    const errorMessage = error.message || '生成失败';
+                    if (continuationToolCall) {
+                        continuationToolCall.status = 'error';
+                        continuationToolCall.error = errorMessage;
+                        continuationToolCall.isOpen = true;
+                        activeToolContinuationHasResponse.value = true;
+                    } else {
+                        continuingAssistantMessage.content = [
+                            String(continuingAssistantMessage.content || '').trimEnd(),
+                            `*-- ${errorMessage} --*`
+                        ].filter(Boolean).join('\n\n');
+                        continuingAssistantMessage.shouldAnimate = false;
+                    }
                 } else {
                     chatHistory.value.push({ role: 'system', name: currentCharacter.value.name, content: error.message });
                 }
             } finally {
+                if (continuationToolCall && continuationToolCall.status === 'continuing') {
+                    continuationToolCall.status = 'done';
+                }
                 collapseActiveNativeReasoning();
                 await saveChatHistoryNow();
                 isGenerating.value = false;
                 isReceiving.value = false;
                 isThinking.value = false;
+                if (!continueAssistantMessageId || activeToolContinuationMessageId.value === continueAssistantMessageId) {
+                    activeToolContinuationMessageId.value = null;
+                    activeToolContinuationToolCallId.value = null;
+                    activeToolContinuationHasResponse.value = false;
+                }
                 abortController.value = null;
                 const wasCancelled = _wasCancelled;
                 _wasCancelled = false;
@@ -5103,7 +5663,13 @@ ${content}
                 const needsPostGenerationTurns = !wasCancelled
                     && ((settings.uiTemplateEnabled && generatedAssistantMessageId)
                         || (memorySettings.enabled && memorySettings.autoExtract));
-                const hasCompletedTurns = needsPostGenerationTurns && buildConversationTurnSnapshot().turns.length > 0;
+                const activeToolContinued = !wasCancelled && assistantMessage
+                    ? await handleActiveToolCallFromAssistant(assistantMessage, activeToolDepth)
+                    : false;
+                if (!activeToolContinued) {
+                    resetActiveToolResultContext();
+                }
+                const hasCompletedTurns = !activeToolContinued && needsPostGenerationTurns && buildConversationTurnSnapshot().turns.length > 0;
 
                 if (hasCompletedTurns && settings.uiTemplateEnabled && generatedAssistantMessageId) {
                     nextTick(() => {
@@ -5675,26 +6241,33 @@ ${content}
             Math.min(MEMORY_VECTOR_MAX_TOP_K, Number(memorySettings.vectorTopK) || MEMORY_VECTOR_DEFAULT_TOP_K)
         );
 
+        const getRecentUserMemoryQueries = (limit = 3) => {
+            return getPostprocessedChatMessages(chatHistory.value, { includeSystem: false })
+                .filter(message => message.role === 'user')
+                .map(message => trimMemoryText(getCleanMemoryMessageText(message), 800))
+                .filter(Boolean)
+                .slice(-Math.max(1, limit));
+        };
+
         const getLatestUserMemoryQuery = () => {
-            const latestUserMessage = [...getPostprocessedChatMessages(chatHistory.value, { includeSystem: false })].reverse().find(m => m.role === 'user');
-            if (!latestUserMessage) return '';
-            return trimMemoryText(getCleanMemoryMessageText(latestUserMessage), 800);
+            const queries = getRecentUserMemoryQueries(1);
+            return queries[0] || '';
         };
 
         const buildVectorMemoryQueryText = () => {
-            const latestUserQuery = getLatestUserMemoryQuery();
-            const recentContext = buildMemoryChunkText(getPostprocessedChatMessages(chatHistory.value, { includeSystem: false }).slice(-4), 1200);
-            if (!latestUserQuery) return recentContext;
-            const labeledLatestUserQuery = `用户：${latestUserQuery}`;
-            if (latestUserQuery.length <= 120) {
-                return [
-                    `当前问题：${labeledLatestUserQuery}`,
-                    `检索重点：${labeledLatestUserQuery}`
-                ].join('\n');
-            }
+            const recentUserQueries = getRecentUserMemoryQueries(1);
+            if (recentUserQueries.length === 0) return '';
+
+            const latestUserQuery = recentUserQueries[recentUserQueries.length - 1];
+            const previousUserQueries = recentUserQueries.slice(0, -1);
+
             return [
-                `当前用户输入：${labeledLatestUserQuery}`,
-                recentContext ? `最近上下文：\n${recentContext}` : ''
+                `当前问题：用户：${latestUserQuery}`,
+                ...[...previousUserQueries].reverse().map((query, index) => {
+                    const distance = index + 1;
+                    const label = distance === 1 ? '上一轮用户输入' : `前${distance}轮用户输入`;
+                    return `${label}：用户：${query}`;
+                })
             ].filter(Boolean).join('\n\n');
         };
 
@@ -5798,10 +6371,130 @@ ${content}
             return result;
         };
 
+        const buildFullTurnMemoryText = (turnInfo) => {
+            const messagesArray = Array.isArray(turnInfo?.messages) ? turnInfo.messages : [];
+            return buildMemoryChunkText(messagesArray, Number.MAX_SAFE_INTEGER);
+        };
+
+        const buildMergedVectorMemoryFallbackText = (items) => {
+            const orderedItems = sortVectorMemoriesByTime(items);
+            let userBlock = '';
+            const roleBlocks = [];
+
+            orderedItems.forEach(memory => {
+                const text = getVectorMemoryText(memory);
+                if (!text) return;
+
+                const roleMarker = '\n角色卡：';
+                const roleIndex = text.indexOf(roleMarker);
+                if (roleIndex >= 0) {
+                    if (!userBlock) userBlock = text.slice(0, roleIndex).trim();
+                    const roleText = text.slice(roleIndex + roleMarker.length).trim();
+                    if (roleText) roleBlocks.push(roleText);
+                    return;
+                }
+
+                if (!roleBlocks.includes(text)) roleBlocks.push(text);
+            });
+
+            const roleBlock = roleBlocks.filter(Boolean).join('\n\n').trim();
+            return [
+                userBlock,
+                roleBlock ? `角色卡：${roleBlock}` : ''
+            ].filter(Boolean).join('\n\n').trim();
+        };
+
+        const mergeRepeatedTurnVectorMemories = (items) => {
+            const orderedItems = sortVectorMemoriesByTime(items);
+            const memoriesByTurn = new Map();
+
+            orderedItems.forEach(memory => {
+                const turn = Number(memory?.turn) || 0;
+                if (turn <= 0) return;
+                if (!memoriesByTurn.has(turn)) memoriesByTurn.set(turn, []);
+                memoriesByTurn.get(turn).push(memory);
+            });
+
+            const repeatedTurns = new Set(
+                [...memoriesByTurn.entries()]
+                    .filter(([, turnMemories]) => turnMemories.length >= 2)
+                    .map(([turn]) => turn)
+            );
+            if (repeatedTurns.size === 0) return orderedItems;
+
+            const snapshot = buildConversationTurnSnapshot(chatHistory.value, { includeSystem: false });
+            const turnsByNumber = new Map((snapshot.turns || []).map(turnInfo => [Number(turnInfo.turn) || 0, turnInfo]));
+            const mergedTurns = new Set();
+            const result = [];
+
+            orderedItems.forEach(memory => {
+                const turn = Number(memory?.turn) || 0;
+                if (!repeatedTurns.has(turn)) {
+                    result.push(memory);
+                    return;
+                }
+
+                if (mergedTurns.has(turn)) return;
+                mergedTurns.add(turn);
+
+                const turnMemories = memoriesByTurn.get(turn) || [memory];
+                const fullTurnText = buildFullTurnMemoryText(turnsByNumber.get(turn))
+                    || buildMergedVectorMemoryFallbackText(turnMemories);
+                if (!fullTurnText) return;
+
+                const bestMemory = [...turnMemories].sort((a, b) => (b.vectorScore || 0) - (a.vectorScore || 0))[0] || memory;
+                const sequenceValues = turnMemories
+                    .map(item => Number(item.sequence) || 0)
+                    .filter(sequence => sequence > 0);
+                result.push({
+                    ...bestMemory,
+                    paragraph: fullTurnText,
+                    summary: fullTurnText,
+                    sourceText: fullTurnText,
+                    sequence: sequenceValues.length ? Math.min(...sequenceValues) : bestMemory.sequence,
+                    vectorMergedTurn: true
+                });
+            });
+
+            return result;
+        };
+
+        const getRetainedRecentMemoryTurns = (messages) => {
+            const keepFloors = Number(memorySettings.keepFloors) || 0;
+            if (keepFloors <= 0 || !Array.isArray(messages) || messages.length === 0) return new Set();
+
+            const retainedStartIndex = Math.max(0, messages.length - keepFloors);
+            const snapshot = buildConversationTurnSnapshot(messages, { alreadyPostprocessed: true });
+            const retainedTurns = new Set();
+
+            snapshot.turns.forEach(turnInfo => {
+                const turn = Number(turnInfo.turn) || 0;
+                if (turn <= 0) return;
+                const messageIndexes = Array.isArray(turnInfo.messageIndexes) ? turnInfo.messageIndexes : [];
+                if (messageIndexes.some(messageIndex => messageIndex >= retainedStartIndex)) {
+                    retainedTurns.add(turn);
+                }
+            });
+
+            return retainedTurns;
+        };
+
+        const getCurrentRetainedVectorMemoryTurns = () => getRetainedRecentMemoryTurns(
+            getPostprocessedChatMessages(chatHistory.value, { includeSystem: false })
+        );
+
         const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
 
-        const selectVectorMemoriesForContext = async (signal) => {
-            const vectorMemories = memories.value.filter(isEnabledVectorMemory);
+        const selectVectorMemoriesForContext = async (signal, options = {}) => {
+            const excludedTurns = options.excludedTurns instanceof Set
+                ? options.excludedTurns
+                : new Set(Array.isArray(options.excludedTurns) ? options.excludedTurns : []);
+            const vectorMemories = memories.value
+                .filter(isEnabledVectorMemory)
+                .filter(memory => {
+                    const turn = Number(memory.turn) || 0;
+                    return turn <= 0 || !excludedTurns.has(turn);
+                });
 
             if (vectorMemories.length === 0) return [];
 
@@ -5868,11 +6561,16 @@ ${content}
                 return;
             }
 
+            const excludedTurns = getCurrentRetainedVectorMemoryTurns();
             const vectorMemories = memories.value
                 .filter(m => m.vectorMemory === true && m.enabled !== false)
-                .filter(m => isEmbeddingLike(m.embedding) && m.embedding.length > 0);
+                .filter(m => isEmbeddingLike(m.embedding) && m.embedding.length > 0)
+                .filter(memory => {
+                    const turn = Number(memory.turn) || 0;
+                    return turn <= 0 || !excludedTurns.has(turn);
+                });
             if (vectorMemories.length === 0) {
-                vectorMemorySearchError.value = '还没有可搜索的向量分片';
+                vectorMemorySearchError.value = '还没有可检索的向量分片';
                 return;
             }
 
@@ -5921,7 +6619,7 @@ ${content}
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
-                    vectorMemorySearchError.value = err.message || '向量搜索失败';
+                    vectorMemorySearchError.value = err.message || '向量检索失败';
                 }
             } finally {
                 if (_vectorMemorySearchAbort === searchAbort) {
@@ -5940,6 +6638,1624 @@ ${content}
             vectorMemorySearchResults.value = [];
             vectorMemorySearchError.value = '';
             isVectorMemorySearching.value = false;
+        };
+
+        const searchVectorMemoriesForTool = async (query, limit, signal) => {
+            const cleanQuery = trimMemoryText(stripVectorMemoryCode(query), 800);
+            if (!cleanQuery) return [];
+
+            const excludedTurns = getCurrentRetainedVectorMemoryTurns();
+            const vectorMemories = memories.value
+                .filter(isEnabledVectorMemory)
+                .filter(memory => isEmbeddingLike(memory.embedding) && memory.embedding.length > 0)
+                .filter(memory => {
+                    const turn = Number(memory.turn) || 0;
+                    return turn <= 0 || !excludedTurns.has(turn);
+                });
+            if (vectorMemories.length === 0) return [];
+
+            const [queryVector] = await requestMemoryEmbeddings([`工具检索：${cleanQuery}`], signal);
+            const queryTerms = extractVectorQueryTerms(cleanQuery);
+            const scoredMemories = [];
+
+            for (let i = 0; i < vectorMemories.length; i++) {
+                if (signal?.aborted) return [];
+                const memory = vectorMemories[i];
+                const rawScore = cosineSimilarity(queryVector, memory.embedding);
+                if (Number.isFinite(rawScore) && rawScore > -1) {
+                    const lexical = getVectorLexicalMatch(memory, queryTerms);
+                    scoredMemories.push({
+                        memory,
+                        vectorRawScore: rawScore,
+                        vectorLexicalHits: lexical.hits,
+                        vectorLexicalTerms: lexical.matched,
+                        vectorScore: rawScore + lexical.boost
+                    });
+                }
+                if (i > 0 && i % 512 === 0) await yieldToBrowser();
+            }
+
+            return scoredMemories
+                .sort((a, b) => {
+                    const scoreDiff = b.vectorScore - a.vectorScore;
+                    if (Math.abs(scoreDiff) > 0.0001) return scoreDiff;
+                    return (b.memory.turn || 0) - (a.memory.turn || 0);
+                })
+                .slice(0, Math.max(ACTIVE_TOOL_MIN_RESULT_COUNT, Math.min(ACTIVE_TOOL_MAX_RESULT_COUNT, Number(limit) || ACTIVE_TOOL_DEFAULT_RESULT_COUNT)))
+                .map(item => ({
+                    ...item.memory,
+                    vectorRawScore: item.vectorRawScore,
+                    vectorLexicalHits: item.vectorLexicalHits,
+                    vectorLexicalTerms: item.vectorLexicalTerms,
+                    vectorScore: item.vectorScore
+                }));
+        };
+
+        const extractKeywordToolTerms = (query) => {
+            const cleanQuery = trimMemoryText(stripVectorMemoryCode(query), 300);
+            if (!cleanQuery) return [];
+            const parts = cleanQuery
+                .split(/[\s,，、;；|｜/\\]+/u)
+                .map(term => term.trim())
+                .filter(Boolean);
+            return Array.from(new Set([cleanQuery, ...parts]))
+                .filter(term => term.length > 0)
+                .slice(0, 12);
+        };
+
+        const getKeywordToolMessageText = (message) => {
+            if (!message || typeof message.content !== 'string') return '';
+            const parsedData = parseCot(message.content || '');
+            return trimMemoryText(stripVectorMemoryCode(stripImageTags(parsedData.main || '')), 5000);
+        };
+
+        const buildKeywordToolSnippet = (text, matchedTerms) => {
+            const source = String(text || '').trim();
+            if (source.length <= 1400) return source;
+            const lowerSource = source.toLowerCase();
+            const firstIndex = matchedTerms
+                .map(term => lowerSource.indexOf(String(term || '').toLowerCase()))
+                .filter(index => index >= 0)
+                .sort((a, b) => a - b)[0] ?? 0;
+            const start = Math.max(0, firstIndex - 420);
+            const end = Math.min(source.length, firstIndex + 900);
+            return `${start > 0 ? '...' : ''}${source.slice(start, end).trim()}${end < source.length ? '...' : ''}`;
+        };
+
+        const searchDialogueByKeywordForTool = (query, limit, options = {}) => {
+            const terms = extractKeywordToolTerms(query);
+            if (terms.length === 0) return [];
+            const lowerTerms = terms.map(term => term.toLowerCase());
+            const messages = getPostprocessedChatMessages(chatHistory.value, { includeSystem: false });
+            const snapshot = buildConversationTurnSnapshot(messages, { alreadyPostprocessed: true });
+            const turnByMessageIndex = new Map();
+            (snapshot.turns || []).forEach(turnInfo => {
+                (turnInfo.messageIndexes || []).forEach(messageIndex => {
+                    turnByMessageIndex.set(messageIndex, turnInfo.turn);
+                });
+            });
+
+            const scored = [];
+            messages.forEach((message, index) => {
+                if (!message || message.role === 'system') return;
+                if (options.excludeMessageId && message.id === options.excludeMessageId) return;
+                const text = getKeywordToolMessageText(message);
+                if (!text || isRoleMemoryContextContent(text) || text.includes('<active_tool_results>')) return;
+
+                const lowerText = text.toLowerCase();
+                const matchedTerms = terms.filter((term, termIndex) => lowerText.includes(lowerTerms[termIndex]));
+                if (matchedTerms.length === 0) return;
+
+                const fullQueryMatched = lowerText.includes(lowerTerms[0]);
+                const roleLabel = message.role === 'user' ? '用户' : '角色卡';
+                const speaker = message.name || (message.role === 'user' ? user.name : currentCharacter.value?.name) || roleLabel;
+                scored.push({
+                    turn: turnByMessageIndex.get(index) || getConversationTurnAtIndexFromSnapshot(snapshot, index) || '?',
+                    role: message.role,
+                    speaker,
+                    matchedTerms,
+                    score: (fullQueryMatched ? 100 : 0) + matchedTerms.length,
+                    messageIndex: index,
+                    dialogueText: `${roleLabel}：${buildKeywordToolSnippet(text, matchedTerms)}`
+                });
+            });
+
+            return scored
+                .sort((a, b) => {
+                    const scoreDiff = b.score - a.score;
+                    if (scoreDiff !== 0) return scoreDiff;
+                    return b.messageIndex - a.messageIndex;
+                })
+                .slice(0, Math.max(ACTIVE_TOOL_MIN_RESULT_COUNT, Math.min(ACTIVE_TOOL_MAX_RESULT_COUNT, Number(limit) || ACTIVE_TOOL_DEFAULT_RESULT_COUNT)))
+                .sort((a, b) => a.messageIndex - b.messageIndex);
+        };
+
+        const getTavilyErrorDetailText = (detail) => {
+            if (detail === null || detail === undefined) return '';
+            if (typeof detail === 'string') return detail.trim();
+            if (typeof detail === 'number' || typeof detail === 'boolean') return String(detail);
+            if (Array.isArray(detail)) {
+                return detail
+                    .map(item => getTavilyErrorDetailText(item))
+                    .filter(Boolean)
+                    .join('；');
+            }
+            if (typeof detail === 'object') {
+                const directKeys = ['msg', 'message', 'error_message', 'error', 'detail', 'reason', 'description'];
+                for (const key of directKeys) {
+                    const text = getTavilyErrorDetailText(detail[key]);
+                    if (text) return text;
+                }
+                return stringifyErrorDetail(detail).trim();
+            }
+            return String(detail).trim();
+        };
+
+        const buildTavilyErrorMessage = (response, data) => {
+            const detail = data?.detail ?? data?.message ?? data?.error ?? data?.error_message;
+            const message = getTavilyErrorDetailText(detail);
+            if (response.status === 401) return 'Tavily API Key 无效，请检查工具设置里的 API Key。';
+            if (response.status === 429) return 'Tavily 请求太频繁或额度不足，请稍后再试。';
+            if (response.status === 432 || response.status === 433) return message || 'Tavily 账户额度或权限不足。';
+            return message || `Tavily 搜索失败：HTTP ${response.status}`;
+        };
+
+        const normalizeTavilyExtractUrl = (value) => {
+            let text = String(value || '').trim().replace(/[，。；、）)\].,;]+$/g, '');
+            if (!text) return '';
+            if (/^www\./i.test(text)) text = `https://${text}`;
+            try {
+                const url = new URL(text);
+                if (!['http:', 'https:'].includes(url.protocol)) return '';
+                return url.href;
+            } catch (err) {
+                return '';
+            }
+        };
+
+        const extractWebUrlsFromToolQuery = (query) => {
+            const matches = String(query || '').match(/https?:\/\/[^\s<>"'，。；、）)\]]+|www\.[^\s<>"'，。；、）)\]]+/gi) || [];
+            const urls = matches
+                .map(normalizeTavilyExtractUrl)
+                .filter(Boolean);
+            return [...new Set(urls)].slice(0, ACTIVE_TOOL_TAVILY_EXTRACT_MAX_URLS);
+        };
+
+        const getWebTitleFromUrl = (url) => {
+            try {
+                return new URL(url).hostname || url;
+            } catch (err) {
+                return url || '网页';
+            }
+        };
+
+        const extractWebPagesByTavilyForTool = async (urls, tool, signal) => {
+            const apiKey = String(tool?.tavilyApiKey || '').trim();
+            if (!apiKey) {
+                throw new Error('请先在工具设置里填写 Tavily API Key。');
+            }
+
+            const body = {
+                urls: urls.length === 1 ? urls[0] : urls,
+                extract_depth: ACTIVE_TOOL_TAVILY_SEARCH_DEPTH,
+                format: 'markdown',
+                include_favicon: true,
+                timeout: 30
+            };
+
+            const response = await fetch(ACTIVE_TOOL_TAVILY_EXTRACT_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body),
+                signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(buildTavilyErrorMessage(response, data).replace('搜索失败', '网页读取失败'));
+            }
+
+            const results = (Array.isArray(data.results) ? data.results : [])
+                .map((item, index) => {
+                    const url = String(item?.url || urls[index] || '').trim();
+                    return {
+                        index: index + 1,
+                        title: String(item?.title || getWebTitleFromUrl(url)).trim(),
+                        url,
+                        content: trimMemoryText(item?.raw_content || item?.content || '', 6000),
+                        favicon: item?.favicon || '',
+                        sourceType: 'extract'
+                    };
+                })
+                .filter(item => item.url || item.content);
+            results.tavilyMode = 'extract';
+            results.tavilyResponseTime = data.response_time || '';
+            results.tavilyFailedResults = Array.isArray(data.failed_results)
+                ? data.failed_results.map(item => ({
+                    url: String(item?.url || '').trim(),
+                    error: getTavilyErrorDetailText(item?.error ?? item?.message ?? item?.detail)
+                }))
+                : [];
+            return results;
+        };
+
+        const searchWebByTavilyForTool = async (query, tool, signal) => {
+            const cleanQuery = trimMemoryText(query, 800);
+            if (!cleanQuery) return [];
+            const extractUrls = extractWebUrlsFromToolQuery(cleanQuery);
+            if (extractUrls.length > 0) {
+                return extractWebPagesByTavilyForTool(extractUrls, tool, signal);
+            }
+
+            const apiKey = String(tool?.tavilyApiKey || '').trim();
+            if (!apiKey) {
+                throw new Error('请先在工具设置里填写 Tavily API Key。');
+            }
+
+            const maxResults = Math.max(ACTIVE_TOOL_MIN_RESULT_COUNT, Math.min(ACTIVE_TOOL_MAX_RESULT_COUNT, Number(tool?.resultCount) || ACTIVE_TOOL_DEFAULT_RESULT_COUNT));
+            const body = {
+                query: cleanQuery,
+                search_depth: ACTIVE_TOOL_TAVILY_SEARCH_DEPTH,
+                max_results: maxResults,
+                topic: 'general',
+                include_favicon: true
+            };
+
+            const response = await fetch(ACTIVE_TOOL_TAVILY_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body),
+                signal
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(buildTavilyErrorMessage(response, data));
+            }
+
+            const results = (Array.isArray(data.results) ? data.results : [])
+                .slice(0, maxResults)
+                .map((item, index) => ({
+                    index: index + 1,
+                    title: String(item?.title || '未命名网页').trim(),
+                    url: String(item?.url || '').trim(),
+                    content: trimMemoryText(item?.content || '', 1800),
+                    score: Number(item?.score),
+                    publishedDate: item?.published_date || item?.publishedDate || '',
+                    favicon: item?.favicon || '',
+                    sourceType: 'search'
+                }));
+            results.tavilyMode = 'search';
+            results.tavilyResponseTime = data.response_time || '';
+            return results;
+        };
+
+        const getEnabledWorldInfoToolEntries = () => {
+            const entries = Array.isArray(worldInfo.value) ? worldInfo.value : [];
+            return entries
+                .map((entry, sourceIndex) => ({
+                    sourceIndex,
+                    entry: normalizeWorldInfoEntry(entry || {})
+                }))
+                .filter(item => item.entry.enabled !== false && !systemWorldInfoNames.includes(item.entry.comment))
+                .map((item, index) => ({
+                    ...item,
+                    index: index + 1
+                }));
+        };
+
+        const getWorldInfoEntrySearchText = (entry) => [
+            entry.comment,
+            ...(Array.isArray(entry.keys) ? entry.keys : []),
+            entry.content
+        ].filter(Boolean).join('\n').toLowerCase();
+
+        const isWorldInfoAllQuery = (query) => {
+            const text = String(query || '').trim().toLowerCase();
+            return !text || ['all', 'list', '全部', '所有', '列表', '已开启', '*'].includes(text);
+        };
+
+        const parseWorldInfoJsonPayload = (query) => {
+            const text = String(query || '').trim();
+            if (!text.startsWith('{') || !text.endsWith('}')) return null;
+            try {
+                return JSON.parse(text);
+            } catch (err) {
+                throw new Error(`世界书工具参数不是有效 JSON：${err.message}`);
+            }
+        };
+
+        const normalizeWorldInfoTarget = (value) => {
+            if (value === null || value === undefined) return '';
+            return String(value).trim();
+        };
+
+        const getWorldInfoTargetFromPayload = (payload, fallbackQuery = '') => {
+            if (!payload || typeof payload !== 'object') return normalizeWorldInfoTarget(fallbackQuery);
+            return normalizeWorldInfoTarget(
+                payload.id
+                ?? payload.index
+                ?? payload.name
+                ?? payload.comment
+                ?? payload.key
+                ?? payload.target
+                ?? payload.query
+                ?? fallbackQuery
+            );
+        };
+
+        const resolveWorldInfoToolEntries = (query, options = {}) => {
+            const { includeContentMatch = true, limit = Infinity } = options;
+            const takeLimit = (items) => Number.isFinite(limit)
+                ? items.slice(0, Math.max(1, limit))
+                : items;
+            const entries = getEnabledWorldInfoToolEntries();
+            const rawTarget = normalizeWorldInfoTarget(query);
+            if (isWorldInfoAllQuery(rawTarget)) {
+                return takeLimit(entries);
+            }
+
+            const numericMatch = rawTarget.match(/(?:^|[#=\s])(\d+)(?:\s*$)/);
+            if (numericMatch) {
+                const targetIndex = Number(numericMatch[1]);
+                const matchedByIndex = entries.filter(item => (
+                    item.index === targetIndex
+                    || item.sourceIndex + 1 === targetIndex
+                ));
+                if (matchedByIndex.length > 0) return takeLimit(matchedByIndex);
+            }
+
+            const target = rawTarget
+                .replace(/^(?:id|index|编号|序号)\s*[:=#：]?\s*/i, '')
+                .trim()
+                .toLowerCase();
+            if (!target) return [];
+
+            const exactMatches = entries.filter(item => (
+                String(item.entry.comment || '').trim().toLowerCase() === target
+                || (Array.isArray(item.entry.keys) && item.entry.keys.some(key => String(key || '').trim().toLowerCase() === target))
+            ));
+            if (exactMatches.length > 0) return takeLimit(exactMatches);
+
+            return takeLimit(entries
+                .filter(item => {
+                    const nameAndKeys = [
+                        item.entry.comment,
+                        ...(Array.isArray(item.entry.keys) ? item.entry.keys : [])
+                    ].filter(Boolean).join('\n').toLowerCase();
+                    if (nameAndKeys.includes(target)) return true;
+                    return includeContentMatch && getWorldInfoEntrySearchText(item.entry).includes(target);
+                }));
+        };
+
+        const formatWorldInfoEntryForTool = (item, options = {}) => {
+            const { includeContent = false } = options;
+            const content = String(item.entry.content || '');
+            return {
+                index: item.index,
+                sourceIndex: item.sourceIndex,
+                comment: item.entry.comment || `世界书 ${item.index}`,
+                scope: item.entry.scope || 'character',
+                keys: Array.isArray(item.entry.keys) ? item.entry.keys : [],
+                constant: !!item.entry.constant,
+                position: item.entry.position || 'at_depth',
+                order: Number(item.entry.order) || 0,
+                depth: Number(item.entry.depth) || 0,
+                contentLength: content.length,
+                preview: trimMemoryText(content, 180),
+                content: includeContent ? content : '',
+                truncated: false
+            };
+        };
+
+        const listEnabledWorldInfoForTool = () => {
+            const matches = getEnabledWorldInfoToolEntries();
+            const allCount = getEnabledWorldInfoToolEntries().length;
+            const results = matches.map(item => formatWorldInfoEntryForTool(item));
+            results.worldInfoMode = 'list';
+            results.totalEnabledCount = allCount;
+            results.limited = false;
+            return results;
+        };
+
+        const readEnabledWorldInfoForTool = (query) => {
+            const payload = parseWorldInfoJsonPayload(query);
+            const target = getWorldInfoTargetFromPayload(payload, query)
+                .replace(/^\s*read\s*[:：]?\s*/i, '')
+                .trim();
+            const matches = resolveWorldInfoToolEntries(target, {
+                includeContentMatch: true
+            });
+            const results = matches.map(item => formatWorldInfoEntryForTool(item, { includeContent: true }));
+            results.worldInfoMode = 'read';
+            results.totalEnabledCount = getEnabledWorldInfoToolEntries().length;
+            return results;
+        };
+
+        const normalizeWorldInfoEditOperation = (payload = {}) => {
+            const raw = String(payload.operation || payload.mode || payload.action || '').trim().toLowerCase();
+            if (payload.find !== undefined && (payload.replace !== undefined || payload.replacement !== undefined)) return 'replace_text';
+            if (['append', 'add', '追加', '添加', '末尾追加'].includes(raw)) return 'append';
+            if (['prepend', 'prefix', '前置', '开头插入'].includes(raw)) return 'prepend';
+            if (['replace_text', 'replace-text', 'patch', '局部替换'].includes(raw)) return 'replace_text';
+            return 'replace';
+        };
+
+        const parseWorldInfoEditPayload = (query) => {
+            const normalizedQuery = String(query || '').trim().replace(/^\s*edit\s*[:：]?\s*/i, '');
+            const jsonPayload = parseWorldInfoJsonPayload(normalizedQuery);
+            if (jsonPayload) return jsonPayload;
+
+            const text = normalizedQuery;
+            const quickMatch = text.match(/^#?(\d+)\s+(replace_text|replace|append|prepend|覆盖|追加|前置|局部替换)\s*[:：]\s*([\s\S]+)$/i);
+            if (quickMatch) {
+                return {
+                    id: Number(quickMatch[1]),
+                    operation: quickMatch[2],
+                    content: quickMatch[3]
+                };
+            }
+
+            const payload = {};
+            text.split(/\n+/).forEach(line => {
+                const match = line.match(/^\s*(id|index|name|comment|target|operation|mode|action|find|replace)\s*[:=：]\s*([\s\S]*?)\s*$/i);
+                if (match) payload[match[1].toLowerCase()] = match[2];
+            });
+            const contentMatch = text.match(/(?:^|\n)\s*(?:content|text|newContent|新内容)\s*[:=：]\s*([\s\S]+)$/i);
+            if (contentMatch) payload.content = contentMatch[1].trim();
+            return payload;
+        };
+
+        const getWorldInfoEditContentValue = (payload, keys) => {
+            for (const key of keys) {
+                if (Object.prototype.hasOwnProperty.call(payload, key)) {
+                    return payload[key];
+                }
+            }
+            return undefined;
+        };
+
+        const editEnabledWorldInfoForTool = async (query) => {
+            const payload = parseWorldInfoEditPayload(query);
+            const target = getWorldInfoTargetFromPayload(payload, '');
+            if (!target) {
+                throw new Error('编辑世界书需要指定 name、comment、target 或 id。建议先调用 list 看名字，再 read 确认完整内容。');
+            }
+
+            const matches = resolveWorldInfoToolEntries(target, {
+                includeContentMatch: false,
+                limit: ACTIVE_TOOL_MAX_RESULT_COUNT
+            });
+            if (matches.length === 0) {
+                throw new Error('没有找到匹配的已开启世界书条目，或目标是系统内置/未开启条目。请先调用 list 确认世界书名字。');
+            }
+            if (matches.length > 1) {
+                const names = matches.map(item => `#${item.index} ${item.entry.comment || '未命名'}`).join('；');
+                throw new Error(`匹配到多个世界书条目：${names}。请使用更完整的世界书名字，或先 read 确认目标。`);
+            }
+
+            const match = matches[0];
+            const originalEntry = normalizeWorldInfoEntry(worldInfo.value[match.sourceIndex] || {});
+            const oldContent = String(originalEntry.content || '');
+            const operation = normalizeWorldInfoEditOperation(payload);
+            let newContent = oldContent;
+
+            if (operation === 'replace_text') {
+                const findText = String(getWorldInfoEditContentValue(payload, ['find', 'old', 'oldText']) ?? '');
+                const replaceText = String(getWorldInfoEditContentValue(payload, ['replace', 'replacement', 'new', 'newText']) ?? '');
+                if (!findText) throw new Error('局部替换需要提供 find 旧文本。');
+                if (!oldContent.includes(findText)) throw new Error('世界书内容里没有找到 find 指定的旧文本，已取消编辑。');
+                newContent = oldContent.split(findText).join(replaceText);
+            } else {
+                const contentValue = getWorldInfoEditContentValue(payload, ['content', 'newContent', 'text', 'value']);
+                if (contentValue === undefined) {
+                    throw new Error('编辑世界书需要提供 content/newContent/text 字段。');
+                }
+                const editText = String(contentValue);
+                if (operation === 'append') {
+                    newContent = oldContent
+                        ? `${oldContent}${editText.startsWith('\n') ? '' : '\n'}${editText}`
+                        : editText;
+                } else if (operation === 'prepend') {
+                    newContent = oldContent
+                        ? `${editText}${editText.endsWith('\n') ? '' : '\n'}${oldContent}`
+                        : editText;
+                } else {
+                    newContent = editText;
+                }
+            }
+
+            const updatedEntry = normalizeWorldInfoEntry({
+                ...originalEntry,
+                content: newContent
+            });
+            worldInfo.value.splice(match.sourceIndex, 1, updatedEntry);
+            const normalizedWorldInfo = JSON.parse(JSON.stringify(worldInfo.value)).map(normalizeWorldInfoEntry);
+            globalWorldInfo.value = normalizedWorldInfo.filter(entry => entry.scope === 'global');
+            if (currentCharacterIndex.value !== -1 && characters.value[currentCharacterIndex.value]) {
+                characters.value[currentCharacterIndex.value].worldInfo = normalizedWorldInfo.filter(entry => entry.scope !== 'global');
+            }
+            await saveData({ saveMemories: false });
+
+            const results = [{
+                index: match.index,
+                sourceIndex: match.sourceIndex,
+                comment: updatedEntry.comment || `世界书 ${match.index}`,
+                scope: updatedEntry.scope || 'character',
+                operation,
+                changed: newContent !== oldContent,
+                oldLength: oldContent.length,
+                newLength: newContent.length,
+                preview: trimMemoryText(newContent, 240)
+            }];
+            results.worldInfoMode = 'edit';
+            results.worldInfoMutations = [{
+                sourceIndex: match.sourceIndex,
+                index: match.index,
+                comment: updatedEntry.comment || `世界书 ${match.index}`,
+                scope: updatedEntry.scope || 'character',
+                operation,
+                changed: newContent !== oldContent,
+                beforeEntry: cloneForStorage(originalEntry),
+                afterEntry: cloneForStorage(updatedEntry)
+            }];
+            return results;
+        };
+
+        const parseWorldInfoToolRequest = (query) => {
+            const text = String(query || '').trim();
+            const payload = parseWorldInfoJsonPayload(text);
+            if (payload) {
+                const actionText = String(payload.action || payload.tool || payload.mode || '').trim().toLowerCase();
+                const editOperation = String(payload.operation || '').trim().toLowerCase();
+                if (['list', '列表', 'all', '全部'].includes(actionText)) return { action: 'list', payload, query: text };
+                if (['read', '阅读', 'view', '查看'].includes(actionText)) return { action: 'read', payload, query: getWorldInfoTargetFromPayload(payload, '') };
+                if (['edit', '编辑', 'update', '修改'].includes(actionText)
+                    || payload.content !== undefined
+                    || payload.newContent !== undefined
+                    || payload.text !== undefined
+                    || payload.find !== undefined
+                    || ['replace', 'append', 'prepend', 'replace_text', 'replace-text'].includes(editOperation)) {
+                    return { action: 'edit', payload, query: text };
+                }
+                if (getWorldInfoTargetFromPayload(payload, '')) {
+                    return { action: 'read', payload, query: getWorldInfoTargetFromPayload(payload, '') };
+                }
+                return { action: 'list', payload, query: text };
+            }
+
+            const actionMatch = text.match(/^(list|列表|all|全部|read|阅读|view|查看|edit|编辑|update|修改)(?:\s+|[:：]|$)\s*([\s\S]*)$/i);
+            if (actionMatch) {
+                const action = actionMatch[1].toLowerCase();
+                const rest = String(actionMatch[2] || '').trim();
+                if (['list', '列表', 'all', '全部'].includes(action)) return { action: 'list', query: rest };
+                if (['read', '阅读', 'view', '查看'].includes(action)) return { action: 'read', query: rest };
+                return { action: 'edit', query: rest || text };
+            }
+
+            if (isWorldInfoAllQuery(text)) return { action: 'list', query: text };
+            if (/^(?:#?\d+|id\s*[:=#：]?\s*\d+|index\s*[:=#：]?\s*\d+|编号\s*[:=#：]?\s*\d+)$/i.test(text)) {
+                return { action: 'read', query: text };
+            }
+            return { action: 'read', query: text };
+        };
+
+        const runWorldInfoToolForActiveTool = async (toolCall) => {
+            const request = parseWorldInfoToolRequest(toolCall.query);
+            if (request.action === 'list') return listEnabledWorldInfoForTool();
+            if (request.action === 'edit') {
+                if (!canEditWorldInfoWithTool(toolCall.tool)) {
+                    throw new Error('当前世界书工具是阅读模式，不能编辑世界书。请在工具设置里切换到“编辑”后再试。');
+                }
+                return editEnabledWorldInfoForTool(request.query);
+            }
+            return readEnabledWorldInfoForTool(request.query);
+        };
+
+        const getWorldInfoRollbackSignature = (entry) => {
+            try {
+                return JSON.stringify(normalizeWorldInfoEntry(entry || {}));
+            } catch (err) {
+                return '';
+            }
+        };
+
+        const findWorldInfoRollbackTargetIndex = (mutation) => {
+            const entries = Array.isArray(worldInfo.value) ? worldInfo.value : [];
+            const afterSignature = getWorldInfoRollbackSignature(mutation?.afterEntry);
+            const sourceIndex = Number(mutation?.sourceIndex);
+            if (Number.isInteger(sourceIndex)
+                && sourceIndex >= 0
+                && sourceIndex < entries.length
+                && getWorldInfoRollbackSignature(entries[sourceIndex]) === afterSignature) {
+                return sourceIndex;
+            }
+            return entries.findIndex(entry => getWorldInfoRollbackSignature(entry) === afterSignature);
+        };
+
+        const syncWorldInfoScopesFromCurrentList = () => {
+            const normalizedWorldInfo = JSON.parse(JSON.stringify(worldInfo.value || [])).map(normalizeWorldInfoEntry);
+            globalWorldInfo.value = normalizedWorldInfo.filter(entry => entry.scope === 'global');
+            if (currentCharacterIndex.value !== -1 && characters.value[currentCharacterIndex.value]) {
+                characters.value[currentCharacterIndex.value].worldInfo = normalizedWorldInfo.filter(entry => entry.scope !== 'global');
+            }
+        };
+
+        const rollbackWorldInfoMutationsFromMessages = (messages = []) => {
+            const mutations = [];
+            (Array.isArray(messages) ? messages : [messages]).forEach(message => {
+                if (!message || !Array.isArray(message.toolCalls)) return;
+                message.toolCalls.forEach(toolCall => {
+                    if (Array.isArray(toolCall?.worldInfoMutations)) {
+                        toolCall.worldInfoMutations.forEach(mutation => {
+                            mutations.push(mutation);
+                        });
+                    }
+                });
+            });
+
+            let applied = 0;
+            let skipped = 0;
+            [...mutations].reverse().forEach(mutation => {
+                if (!mutation?.beforeEntry || !mutation?.afterEntry) return;
+                const targetIndex = findWorldInfoRollbackTargetIndex(mutation);
+                if (targetIndex < 0) {
+                    skipped += 1;
+                    return;
+                }
+                worldInfo.value.splice(targetIndex, 1, normalizeWorldInfoEntry(cloneForStorage(mutation.beforeEntry)));
+                applied += 1;
+            });
+
+            if (applied > 0) {
+                syncWorldInfoScopesFromCurrentList();
+            }
+
+            return { applied, skipped };
+        };
+
+        const resetActiveToolResultContext = () => {
+            activeToolResultContexts.value = [];
+            pendingActiveToolContext.value = '';
+        };
+
+        const buildActiveToolResultPayload = () => {
+            const blocks = activeToolResultContexts.value.filter(Boolean);
+            if (blocks.length === 0) return '';
+            return [
+                '<active_tool_results>',
+                '  <description>以下是本轮正文工具调用已经检索到的结果。本段内容由系统插入最后一条用户消息结尾。追加调用会保留并追加旧结果，覆盖调用会替换旧结果；请把这些内容作为参考继续回答，不要复述工具调用标签。</description>',
+                blocks.join('\n\n'),
+                '</active_tool_results>'
+            ].join('\n');
+        };
+
+        const updateActiveToolResultContext = (resultContext, mode = 'add') => {
+            if (!resultContext) {
+                pendingActiveToolContext.value = buildActiveToolResultPayload();
+                return;
+            }
+            if (mode === 'cover') {
+                activeToolResultContexts.value = [resultContext];
+            } else {
+                activeToolResultContexts.value = [...activeToolResultContexts.value, resultContext];
+            }
+            pendingActiveToolContext.value = buildActiveToolResultPayload();
+        };
+
+        const formatActiveToolResultContext = (tool, query, results, mode = 'add') => {
+            const title = escapeXmlAttribute(tool.name || '工具');
+            const modeValue = mode === 'cover' ? 'cover' : 'add';
+            const labels = getActiveToolCallLabels(tool);
+            const callName = escapeXmlAttribute(modeValue === 'cover' ? labels.cover : labels.add);
+            const cleanQuery = trimMemoryText(query, 800);
+            if (isWebActiveTool(tool)) {
+                const modeDescription = modeValue === 'cover'
+                    ? '本次调用模式为覆盖：系统会用本次结果替换本轮此前已检索的工具结果。'
+                    : '本次调用模式为追加：系统会把本次结果追加到本轮此前已检索的工具结果后。';
+                const responseTime = results?.tavilyResponseTime
+                    ? ` response_time="${escapeXmlAttribute(results.tavilyResponseTime)}"`
+                    : '';
+                const webMode = results?.tavilyMode === 'extract' ? 'extract' : 'search';
+
+                if (!Array.isArray(results) || results.length === 0) {
+                    const emptyDescription = webMode === 'extract'
+                        ? `系统已尝试进入网页链接读取正文，但没有抽取到可用内容。${modeDescription}本段内容已插入最后一条用户消息结尾。请先判断当前搜索摘要和上下文是否已经足够；如果仍不够，请换另一个更可靠的来源链接或重新搜索，不要编造网页正文没有支持的信息。`
+                        : `系统已通过 Tavily 联网搜索，但没有找到可用网页结果。${modeDescription}本段内容已插入最后一条用户消息结尾。请先判断当前上下文是否已经足够；如果仍不够，请换更具体的作品名、角色名、站点名、别名或语言关键词再次调用，不要编造搜索结果没有支持的信息。`;
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" web_mode="${webMode}"${responseTime}>`,
+                        `  <description>${emptyDescription}</description>`,
+                        '</active_tool_result>'
+                    ].join('\n');
+                }
+
+                if (webMode === 'extract') {
+                    const formattedPages = results.map(item => {
+                        const attrs = [
+                            `index="${escapeXmlAttribute(item.index || '')}"`,
+                            `title="${escapeXmlAttribute(item.title || '')}"`,
+                            `url="${escapeXmlAttribute(item.url || '')}"`
+                        ];
+                        const contentText = indentXmlText(item.content || '', 4);
+                        return [
+                            `  <web_page ${attrs.join(' ')}>`,
+                            contentText ? `    <content>\n${contentText}\n    </content>` : '',
+                            '  </web_page>'
+                        ].filter(Boolean).join('\n');
+                    }).join('\n\n');
+
+                    const failedPages = (Array.isArray(results.tavilyFailedResults) ? results.tavilyFailedResults : [])
+                        .filter(item => item.url || item.error)
+                        .map(item => `  <failed_page url="${escapeXmlAttribute(item.url || '')}" error="${escapeXmlAttribute(item.error || '网页读取失败')}"></failed_page>`)
+                        .join('\n');
+
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" web_mode="extract"${responseTime}>`,
+                        `  <description>以下是系统进入网页链接后通过 Tavily Extract 读取到的网页正文。${modeDescription}本段内容由系统插入最后一条用户消息结尾。请优先依据网页正文继续回答；不要把正文没有支持的内容说成事实。如果正文仍不足以确认，请回到搜索结果选择另一个可靠来源链接，或换更具体的关键词继续搜索。</description>`,
+                        formattedPages,
+                        failedPages,
+                        '</active_tool_result>'
+                    ].filter(Boolean).join('\n');
+                }
+
+                const formattedResults = results.map(item => {
+                    const attrs = [
+                        `index="${escapeXmlAttribute(item.index || '')}"`,
+                        `title="${escapeXmlAttribute(item.title || '')}"`,
+                        `url="${escapeXmlAttribute(item.url || '')}"`
+                    ];
+                    if (Number.isFinite(item.score)) attrs.push(`score="${escapeXmlAttribute(item.score.toFixed(4))}"`);
+                    if (item.publishedDate) attrs.push(`published_date="${escapeXmlAttribute(item.publishedDate)}"`);
+                    const contentText = indentXmlText(item.content || '', 4);
+                    return [
+                        `  <web_source ${attrs.join(' ')}>`,
+                        contentText ? `    <content>\n${contentText}\n    </content>` : '',
+                        '  </web_source>'
+                    ].filter(Boolean).join('\n');
+                }).join('\n\n');
+
+                return [
+                    `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" web_mode="search"${responseTime}>`,
+                    `  <description>以下是系统通过 Tavily 联网搜索得到的网页资料。${modeDescription}本段内容由系统插入最后一条用户消息结尾。请优先依据这些标题、链接和摘要继续回答；不要把搜索结果没有支持的内容说成事实。如果摘要仍不足以明确回答，请从结果中选择一个或多个最相关的真实 URL，追加调用 <${callName}:该URL> 进入网页读取正文，或换更具体的关键词继续搜索。可以多行调用多个 URL，系统会按顺序追加结果。</description>`,
+                    formattedResults,
+                    '</active_tool_result>'
+                ].filter(Boolean).join('\n');
+            }
+            if (isWorldInfoActiveTool(tool)) {
+                const modeDescription = modeValue === 'cover'
+                    ? '本次调用模式为覆盖：系统会用本次结果替换本轮此前已检索的工具结果。'
+                    : '本次调用模式为追加：系统会把本次结果追加到本轮此前已检索的工具结果后。';
+                const worldInfoMode = results?.worldInfoMode || 'unknown';
+                const totalEnabledCount = Number(results?.totalEnabledCount) || 0;
+
+                if (!Array.isArray(results) || results.length === 0) {
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" world_info_mode="${escapeXmlAttribute(worldInfoMode)}">`,
+                        `  <description>系统没有找到匹配的已开启世界书条目。${modeDescription}如果需要读取或编辑，请先调用 list 获取可用世界书名字。</description>`,
+                        '</active_tool_result>'
+                    ].join('\n');
+                }
+
+                if (worldInfoMode === 'edit') {
+                    const formattedEdits = results.map(item => {
+                        const attrs = [
+                            `index="${escapeXmlAttribute(item.index || '')}"`,
+                            `name="${escapeXmlAttribute(item.comment || '')}"`,
+                            `scope="${escapeXmlAttribute(item.scope || '')}"`,
+                            `operation="${escapeXmlAttribute(item.operation || '')}"`,
+                            `changed="${escapeXmlAttribute(item.changed ? 'true' : 'false')}"`,
+                            `old_length="${escapeXmlAttribute(item.oldLength || 0)}"`,
+                            `new_length="${escapeXmlAttribute(item.newLength || 0)}"`
+                        ];
+                        const previewText = indentXmlText(item.preview || '', 4);
+                        return [
+                            `  <world_info_edit ${attrs.join(' ')}>`,
+                            previewText ? `    <preview>\n${previewText}\n    </preview>` : '',
+                            '  </world_info_edit>'
+                        ].filter(Boolean).join('\n');
+                    }).join('\n\n');
+
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" world_info_mode="edit">`,
+                        `  <description>以下是系统对已开启世界书内容的编辑结果。${modeDescription}请在继续回答时简短说明已修改哪一条；不要伪造未执行的修改。</description>`,
+                        formattedEdits,
+                        '</active_tool_result>'
+                    ].join('\n');
+                }
+
+                if (worldInfoMode === 'list') {
+                    const names = results
+                        .map(item => String(item.comment || '').trim())
+                        .filter(Boolean)
+                        .join('\n');
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" world_info_mode="list" total_enabled="${escapeXmlAttribute(totalEnabledCount)}">`,
+                        `  <description>以下是当前已开启世界书名字列表，每行一个名字。${modeDescription}请先根据名字判断哪些可能相关；需要完整内容时，用同一个世界书工具继续调用 read 世界书名字。</description>`,
+                        '  <world_info_names>',
+                        indentXmlText(names, 4),
+                        '  </world_info_names>',
+                        '</active_tool_result>'
+                    ].join('\n');
+                }
+
+                const formattedEntries = results.map(item => {
+                    const attrs = [
+                        `index="${escapeXmlAttribute(item.index || '')}"`,
+                        `name="${escapeXmlAttribute(item.comment || '')}"`,
+                        `scope="${escapeXmlAttribute(item.scope || '')}"`,
+                        `keys="${escapeXmlAttribute((item.keys || []).join(', '))}"`,
+                        `constant="${escapeXmlAttribute(item.constant ? 'true' : 'false')}"`,
+                        `position="${escapeXmlAttribute(item.position || '')}"`,
+                        `order="${escapeXmlAttribute(item.order || 0)}"`,
+                        `depth="${escapeXmlAttribute(item.depth || 0)}"`,
+                        `content_length="${escapeXmlAttribute(item.contentLength || 0)}"`
+                    ];
+                    if (item.truncated) attrs.push('truncated="true"');
+                    const bodyText = item.content || item.preview || '';
+                    const bodyTag = item.content ? 'content' : 'preview';
+                    const body = indentXmlText(bodyText, 4);
+                    return [
+                        `  <world_info_entry ${attrs.join(' ')}>`,
+                        body ? `    <${bodyTag}>\n${body}\n    </${bodyTag}>` : '',
+                        '  </world_info_entry>'
+                    ].filter(Boolean).join('\n');
+                }).join('\n\n');
+
+                const description = `以下是系统读取到的已开启世界书内容。${modeDescription}请优先依据这些世界书内容继续回答；如果准备编辑，请使用列表里的准确名字，避免改错条目。`;
+
+                return [
+                    `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}" world_info_mode="${escapeXmlAttribute(worldInfoMode)}" total_enabled="${escapeXmlAttribute(totalEnabledCount)}">`,
+                    `  <description>${description}</description>`,
+                    formattedEntries,
+                    '</active_tool_result>'
+                ].join('\n');
+            }
+            if (isKeywordActiveTool(tool)) {
+                const modeDescription = modeValue === 'cover'
+                    ? '本次调用模式为覆盖：系统会用本次结果替换本轮此前已检索的工具结果。'
+                    : '本次调用模式为追加：系统会把本次结果追加到本轮此前已检索的工具结果后。';
+
+                if (!Array.isArray(results) || results.length === 0) {
+                    return [
+                        `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}">`,
+                        `  <description>系统已按关键词精确检索当前对话历史，但没有找到包含该关键词的对话片段。${modeDescription}本段内容已插入最后一条用户消息结尾。请换更贴近原文的关键词再次调用，不要编造未出现过的对话内容。</description>`,
+                        '</active_tool_result>'
+                    ].join('\n');
+                }
+
+                const formattedResults = results.map(item => {
+                    const turnValue = escapeXmlAttribute(item.turn || '?');
+                    const roleValue = escapeXmlAttribute(item.role || 'unknown');
+                    const speakerValue = escapeXmlAttribute(item.speaker || '');
+                    const matchedValue = escapeXmlAttribute((item.matchedTerms || []).join(', '));
+                    const fragmentText = indentXmlText(item.dialogueText || '', 4);
+                    return [
+                        `  <dialogue_fragment turn="${turnValue}" role="${roleValue}" speaker="${speakerValue}" matched="${matchedValue}">`,
+                        fragmentText,
+                        '  </dialogue_fragment>'
+                    ].join('\n');
+                }).join('\n\n');
+
+                return [
+                    `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}">`,
+                    `  <description>以下是系统根据关键词从当前对话历史中精确抓取到的原文片段。${modeDescription}本段内容由系统插入最后一条用户消息结尾。请优先依据这些原文片段继续回答，不要把没有出现过的内容说成事实；如果仍不足以明确回答，请换更贴近原文的关键词继续调用工具。</description>`,
+                    formattedResults,
+                    '</active_tool_result>'
+                ].join('\n');
+            }
+            const modeDescription = modeValue === 'cover'
+                ? '本次调用模式为覆盖：系统会用本次结果替换本轮此前已检索的工具结果。'
+                : '本次调用模式为追加：系统会把本次结果追加到本轮此前已检索的工具结果后。';
+
+            if (!Array.isArray(results) || results.length === 0) {
+                return [
+                    `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}">`,
+                    `  <description>系统已按工具调用检索向量记忆，但没有找到可用结果。${modeDescription}本段内容已插入最后一条用户消息结尾。请先判断当前上下文是否已经明确且足够；如果仍不够明确完整，请换更具体的检索内容再次调用，不要重复完全相同的查询。</description>`,
+                    '</active_tool_result>'
+                ].join('\n');
+            }
+
+            const formattedResults = sortVectorMemoriesByTime(results).map(memory => {
+                const turnValue = escapeXmlAttribute(memory.turn || '?');
+                const scoreValue = escapeXmlAttribute(Number.isFinite(memory.vectorScore)
+                    ? `${(memory.vectorScore * 100).toFixed(1)}%`
+                    : 'unknown');
+                const fragmentText = indentXmlText(memory.paragraph || memory.summary || memory.sourceText || '', 4);
+                return [
+                    `  <memory_fragment turn="${turnValue}" similarity="${scoreValue}">`,
+                    fragmentText,
+                    '  </memory_fragment>'
+                ].join('\n');
+            }).join('\n\n');
+
+            return [
+                `<active_tool_result name="${title}" call="${callName}" mode="${modeValue}" query="${escapeXmlAttribute(cleanQuery)}">`,
+                `  <description>以下是系统根据上一条正文工具调用检索到的向量记忆。${modeDescription}本段内容由系统插入最后一条用户消息结尾。请用这些结果继续回答用户，不要复述工具调用标签，也不要把这些内容当作当前现场；如果结果仍不足以明确回答，或仍有疑点，请换更具体的检索内容继续调用工具。</description>`,
+                formattedResults,
+                '</active_tool_result>'
+            ].join('\n');
+        };
+
+        const stripCodeBlocksForToolDetection = (text) => String(text || '')
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/~~~[\s\S]*?~~~/g, '');
+
+        const escapeRegexText = (value) => String(value || '').replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
+        const findActiveToolCallsInText = (text) => {
+            const originalContent = String(text || '');
+            if (!originalContent) return [];
+            const mainContent = stripCodeBlocksForToolDetection(parseCot(originalContent).main);
+            const tools = getEnabledActiveTools();
+            const calls = [];
+            const seen = new Set();
+
+            for (const tool of tools) {
+                const labels = getActiveToolCallLabels(tool);
+                const callForms = [
+                    { label: labels.add, mode: 'add' },
+                    { label: labels.cover, mode: 'cover' }
+                ];
+                for (const form of callForms) {
+                    const escapedName = escapeRegexText(form.label);
+                    const regex = new RegExp(`<\\s*${escapedName}\\s*:\\s*([\\s\\S]{1,30000}?)\\s*>`, 'gi');
+                    let match;
+                    while ((match = regex.exec(mainContent)) !== null) {
+                        const query = String(match[1] || '').trim();
+                        if (!query) continue;
+
+                        const raw = match[0];
+                        const originalIndex = originalContent.indexOf(raw, match.index);
+                        const index = originalIndex >= 0 ? originalIndex : match.index;
+                        const key = `${index}:${match.index}:${form.label}:${raw}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+
+                        calls.push({
+                            tool,
+                            mode: form.mode,
+                            callLabel: form.label,
+                            query,
+                            raw,
+                            index,
+                            mainIndex: match.index
+                        });
+                    }
+                }
+            }
+
+            return calls.sort((a, b) => {
+                const indexDiff = (a.index ?? 0) - (b.index ?? 0);
+                if (indexDiff !== 0) return indexDiff;
+                return (a.mainIndex ?? 0) - (b.mainIndex ?? 0);
+            });
+        };
+
+        const getActiveToolDetectionText = (message) => [
+            String(message?.content || ''),
+            String(message?._activeToolPendingText || '')
+        ].filter(Boolean).join('\n');
+
+        const findActiveToolCallsInAssistantMessage = (message) => findActiveToolCallsInText(getActiveToolDetectionText(message));
+
+        const findPendingActiveToolCallInText = (text) => {
+            const originalContent = String(text || '');
+            if (!originalContent) return null;
+            const mainContent = stripCodeBlocksForToolDetection(parseCot(originalContent).main);
+            const tools = getEnabledActiveTools();
+            const candidates = [];
+
+            for (const tool of tools) {
+                const labels = getActiveToolCallLabels(tool);
+                [
+                    { label: labels.add, mode: 'add' },
+                    { label: labels.cover, mode: 'cover' }
+                ].forEach(form => {
+                    const escapedName = escapeRegexText(form.label);
+                    const regex = new RegExp(`<\\s*${escapedName}\\s*:\\s*([\\s\\S]*)$`, 'i');
+                    const match = mainContent.match(regex);
+                    if (!match) return;
+
+                    const raw = match[0];
+                    const rawStart = mainContent.length - raw.length;
+                    const originalIndex = originalContent.indexOf(raw);
+                    candidates.push({
+                        tool,
+                        mode: form.mode,
+                        callLabel: form.label,
+                        query: String(match[1] || '').trim(),
+                        raw,
+                        index: originalIndex >= 0 ? originalIndex : rawStart,
+                        mainIndex: rawStart,
+                        pending: true
+                    });
+                });
+            }
+
+            return candidates.sort((a, b) => {
+                const indexDiff = (a.index ?? 0) - (b.index ?? 0);
+                if (indexDiff !== 0) return indexDiff;
+                return (a.mainIndex ?? 0) - (b.mainIndex ?? 0);
+            })[0] || null;
+        };
+
+        const getPendingToolCallQueryPreview = (toolCall) => {
+            const query = String(toolCall?.query || '').trim();
+            if (!query) return '正在接收工具参数...';
+            if (isWorldInfoActiveTool(toolCall?.tool) && /"action"\s*:\s*"edit"|^\s*\{[\s\S]*"content"\s*:/i.test(query)) {
+                return '正在接收世界书编辑内容...';
+            }
+            return trimMemoryText(query, 160);
+        };
+
+        const createActiveToolUi = (toolCall, initialStatus = 'queued') => ({
+            id: generateUUID(),
+            toolId: toolCall.tool?.id || '',
+            toolType: toolCall.tool?.type || ACTIVE_TOOL_VECTOR_TYPE,
+            toolResultCount: toolCall.tool?.resultCount || ACTIVE_TOOL_DEFAULT_RESULT_COUNT,
+            name: toolCall.tool?.name || '向量记忆主动检索',
+            callName: toolCall.callLabel || toolCall.tool?.callName || 'tool_memory_add',
+            baseCallName: toolCall.tool?.callName || 'tool_memory',
+            mode: toolCall.mode || 'add',
+            query: toolCall.query || '',
+            raw: toolCall.raw,
+            status: initialStatus,
+            isOpen: false,
+            reasoning: '',
+            isReasoningOpen: false,
+            resultCount: 0,
+            resultText: '',
+            error: ''
+        });
+
+        const getActiveToolUiGroupKey = (toolCall) => {
+            const baseCallName = normalizeActiveToolBaseCallName(
+                toolCall?.baseCallName
+                || toolCall?.callName
+                || ''
+            );
+            if (toolCall?.toolType === ACTIVE_TOOL_KEYWORD_TYPE || baseCallName === 'tool_grep') {
+                return ACTIVE_TOOL_KEYWORD_TYPE;
+            }
+            if (toolCall?.toolType === ACTIVE_TOOL_WEB_TYPE || baseCallName === 'tool_web') {
+                return ACTIVE_TOOL_WEB_TYPE;
+            }
+            if (
+                toolCall?.toolType === ACTIVE_TOOL_WORLD_TYPE
+                || ['tool_world', 'tool_world_list', 'tool_world_read', 'tool_world_edit'].includes(baseCallName)
+            ) {
+                return ACTIVE_TOOL_WORLD_TYPE;
+            }
+            if (toolCall?.toolType === ACTIVE_TOOL_VECTOR_TYPE || baseCallName === 'tool_memory') {
+                return ACTIVE_TOOL_VECTOR_TYPE;
+            }
+            return baseCallName || toolCall?.toolId || ACTIVE_TOOL_VECTOR_TYPE;
+        };
+
+        const getToolCallDisplayName = (toolCall) => {
+            const groupKey = getActiveToolUiGroupKey(toolCall);
+            if (groupKey === ACTIVE_TOOL_KEYWORD_TYPE) return '关键词检索';
+            if (groupKey === ACTIVE_TOOL_WEB_TYPE) return 'Tavily 联网搜索';
+            if (groupKey === ACTIVE_TOOL_WORLD_TYPE) return '世界书阅读/管理';
+            if (groupKey === ACTIVE_TOOL_VECTOR_TYPE) return '向量记忆主动检索';
+            return toolCall?.name || '向量记忆主动检索';
+        };
+
+        const getToolCallModeText = (toolCall) => {
+            const groupKey = getActiveToolUiGroupKey(toolCall);
+            const mode = toolCall?.mode === 'cover' ? 'cover' : 'add';
+            const query = String(toolCall?.query || '');
+
+            if (groupKey === ACTIVE_TOOL_WORLD_TYPE) {
+                if (toolCall?.status === 'receiving' && query.includes('编辑内容')) return '编辑世界书';
+                let request = null;
+                try {
+                    request = parseWorldInfoToolRequest(query);
+                } catch (err) {
+                    const looksLikeEdit = /"action"\s*:\s*"edit"|"operation"\s*:|"content"\s*:|"newContent"\s*:|"find"\s*:/i.test(query);
+                    return looksLikeEdit ? '编辑世界书' : '阅读世界书';
+                }
+                if (request?.action === 'list') return '列出世界书';
+                if (request?.action === 'edit') return '编辑世界书';
+                return '阅读世界书';
+            }
+
+            if (groupKey === ACTIVE_TOOL_WEB_TYPE) {
+                const hasUrl = extractWebUrlsFromToolQuery(query).length > 0;
+                if (hasUrl) return mode === 'cover' ? '覆盖网页读取' : '读取网页';
+                return mode === 'cover' ? '覆盖联网搜索' : '联网搜索';
+            }
+
+            if (groupKey === ACTIVE_TOOL_KEYWORD_TYPE) {
+                return mode === 'cover' ? '覆盖关键词检索' : '关键词检索';
+            }
+
+            return mode === 'cover' ? '覆盖向量检索' : '向量检索';
+        };
+
+        const getMergedToolCallItems = (toolCalls, toolCall) => {
+            if (!Array.isArray(toolCalls) || !toolCall) return [];
+            const groupKey = getActiveToolUiGroupKey(toolCall);
+            return toolCalls.filter(item => getActiveToolUiGroupKey(item) === groupKey);
+        };
+
+        const getVisibleToolCalls = (toolCalls) => {
+            if (!Array.isArray(toolCalls)) return [];
+            const seen = new Set();
+            return toolCalls.filter(toolCall => {
+                const groupKey = getActiveToolUiGroupKey(toolCall);
+                if (seen.has(groupKey)) return false;
+                seen.add(groupKey);
+                return true;
+            });
+        };
+
+        const getMergedToolCallCount = (toolCalls, toolCall) => getMergedToolCallItems(toolCalls, toolCall).length;
+
+        const getMergedToolCallTitle = (toolCalls, toolCall) => {
+            const items = getMergedToolCallItems(toolCalls, toolCall);
+            const names = [...new Set(items.map(getToolCallDisplayName).filter(Boolean))];
+            const name = names.length === 1 ? names[0] : getToolCallDisplayName(toolCall);
+            return items.length > 1 ? `${name} · ${items.length} 次` : name;
+        };
+
+        const getMergedToolCallStatus = (toolCalls, toolCall) => {
+            const items = getMergedToolCallItems(toolCalls, toolCall);
+            if (items.some(item => item?.status === 'running')) return 'running';
+            if (items.some(item => item?.status === 'receiving')) return 'receiving';
+            if (items.some(item => item?.status === 'queued')) return 'queued';
+            if (items.some(item => item?.status === 'continuing')) return 'continuing';
+            if (items.some(item => item?.status === 'error')) return 'error';
+            if (items.some(item => item?.status === 'done')) return 'done';
+            return toolCall?.status || 'queued';
+        };
+
+        const isMergedToolCallLive = (toolCalls, toolCall) => ['receiving', 'running', 'queued'].includes(getMergedToolCallStatus(toolCalls, toolCall));
+        const isMergedToolCallError = (toolCalls, toolCall) => getMergedToolCallStatus(toolCalls, toolCall) === 'error';
+        const isMergedToolCallDone = (toolCalls, toolCall) => ['done', 'continuing'].includes(getMergedToolCallStatus(toolCalls, toolCall));
+
+        const getToolCallStatusText = (toolCall) => {
+            const status = toolCall?.status || 'queued';
+            if (status === 'receiving') return '编辑中';
+            if (status === 'queued') return '等待中';
+            if (status === 'running') return '检索中';
+            if (status === 'done') return '已完成';
+            if (status === 'continuing') return '续写中';
+            if (status === 'error') return '失败';
+            return '准备中';
+        };
+
+        const getToolCallReasoningParts = (toolCalls) => (Array.isArray(toolCalls) ? toolCalls : [])
+            .map(item => String(item?.reasoning || '').trim())
+            .filter(Boolean)
+            .filter((text, index, items) => items.indexOf(text) === index);
+
+        const getAssistantReasoningText = (message) => {
+            const parts = [];
+            const seen = new Set();
+            const appendPart = (value) => {
+                const text = String(value || '').trim();
+                if (!text || seen.has(text)) return;
+                seen.add(text);
+                parts.push(text);
+            };
+
+            appendPart(message?.reasoning);
+            getToolCallReasoningParts(message?.toolCalls).forEach(appendPart);
+            return parts.join('\n\n');
+        };
+
+        const getMergedToolCallReasoningText = () => '';
+
+        const isMergedToolCallReasoningLive = (toolCalls, toolCall) => getMergedToolCallItems(toolCalls, toolCall)
+            .some(item => item?.status === 'continuing'
+                && activeToolContinuationToolCallId.value === item.id
+                && isThinking.value);
+
+        const isMergedToolCallReasoningOpen = (toolCalls, toolCall) => {
+            if (toolCall?.isReasoningOpen !== undefined) return toolCall.isReasoningOpen;
+            return getMergedToolCallItems(toolCalls, toolCall).some(item => item?.isReasoningOpen);
+        };
+
+        const toggleMergedToolCallReasoning = (toolCalls, toolCall) => {
+            const nextOpen = !isMergedToolCallReasoningOpen(toolCalls, toolCall);
+            getMergedToolCallItems(toolCalls, toolCall).forEach(item => {
+                item.isReasoningOpen = nextOpen;
+            });
+            if (toolCall) toolCall.isReasoningOpen = nextOpen;
+        };
+
+        const stripActiveToolCallsFromAssistant = (message, toolCalls) => {
+            if (!message || !Array.isArray(toolCalls) || toolCalls.length === 0) return;
+            const originalContent = String(message.content || '');
+            const firstToolCallIndex = toolCalls
+                .map(toolCall => Number.isFinite(toolCall.index) ? toolCall.index : originalContent.indexOf(toolCall.raw))
+                .filter(index => index >= 0)
+                .sort((a, b) => a - b)[0];
+            const nextContent = (Number.isFinite(firstToolCallIndex)
+                ? originalContent.slice(0, firstToolCallIndex)
+                : toolCalls.reduce((content, toolCall) => content.replace(toolCall.raw, ''), originalContent))
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+
+            message.content = nextContent;
+            message.shouldAnimate = false;
+            message.skipReveal = true;
+        };
+
+        const appendActiveToolCallsToAssistant = (message, toolCalls) => {
+            if (!message || !Array.isArray(toolCalls) || toolCalls.length === 0) return [];
+            if (!Array.isArray(message.toolCalls)) message.toolCalls = [];
+
+            const toolUis = [];
+            toolCalls.forEach((toolCall, index) => {
+                const pendingUiId = message._activeToolPendingUiId;
+                const pendingIndex = index === 0 && pendingUiId
+                    ? message.toolCalls.findIndex(item => item?.id === pendingUiId && item.status === 'receiving')
+                    : -1;
+                const nextUi = createActiveToolUi(toolCall);
+                if (pendingIndex >= 0) {
+                    const previousUi = message.toolCalls[pendingIndex];
+                    nextUi.id = previousUi.id;
+                    nextUi.isOpen = previousUi.isOpen;
+                    nextUi.reasoning = previousUi.reasoning || nextUi.reasoning;
+                    nextUi.isReasoningOpen = previousUi.isReasoningOpen;
+                    message.toolCalls.splice(pendingIndex, 1, nextUi);
+                    delete message._activeToolPendingUiId;
+                } else {
+                    message.toolCalls.push(nextUi);
+                }
+                toolUis.push(nextUi);
+            });
+            message.shouldAnimate = false;
+            message.skipReveal = true;
+            return toolUis;
+        };
+
+        const upsertPendingActiveToolCallToAssistant = (message, toolCall) => {
+            if (!message || !toolCall) return null;
+            if (!Array.isArray(message.toolCalls)) message.toolCalls = [];
+            let toolUi = message._activeToolPendingUiId
+                ? message.toolCalls.find(item => item?.id === message._activeToolPendingUiId && item.status === 'receiving')
+                : null;
+            if (!toolUi) {
+                toolUi = createActiveToolUi(toolCall, 'receiving');
+                toolUi.isOpen = true;
+                message.toolCalls.push(toolUi);
+                message._activeToolPendingUiId = toolUi.id;
+            }
+            toolUi.toolId = toolCall.tool?.id || toolUi.toolId || '';
+            toolUi.toolType = toolCall.tool?.type || toolUi.toolType || ACTIVE_TOOL_VECTOR_TYPE;
+            toolUi.name = toolCall.tool?.name || toolUi.name || '工具';
+            toolUi.callName = toolCall.callLabel || toolUi.callName || 'tool_memory_add';
+            toolUi.baseCallName = toolCall.tool?.callName || toolUi.baseCallName || 'tool_memory';
+            toolUi.mode = toolCall.mode || toolUi.mode || 'add';
+            toolUi.query = getPendingToolCallQueryPreview(toolCall);
+            toolUi.raw = toolCall.raw || toolUi.raw || '';
+            toolUi.status = 'receiving';
+            message.shouldAnimate = false;
+            message.skipReveal = true;
+            return toolUi;
+        };
+
+        const attachActiveToolCallsToAssistant = (message, toolCalls, options = {}) => {
+            const toolUis = appendActiveToolCallsToAssistant(message, toolCalls, options);
+            if (toolUis.length === 0) return [];
+            stripActiveToolCallsFromAssistant(message, toolCalls);
+            return toolUis;
+        };
+
+        const removeActiveToolCallRawsFromText = (text, toolCalls) => {
+            let nextText = String(text || '');
+            [...toolCalls]
+                .sort((a, b) => (b.index ?? b.mainIndex ?? 0) - (a.index ?? a.mainIndex ?? 0))
+                .forEach(toolCall => {
+                    const index = Number.isFinite(toolCall.index) ? toolCall.index : nextText.indexOf(toolCall.raw);
+                    if (index < 0) return;
+                    nextText = `${nextText.slice(0, index)}${nextText.slice(index + String(toolCall.raw || '').length)}`;
+                });
+            return nextText;
+        };
+
+        const promoteActiveToolCallsFromAssistant = (message, options = {}) => {
+            if (!message || typeof message.content !== 'string') return [];
+            const scanText = message._activeToolCaptureActive
+                ? String(message._activeToolPendingText || '')
+                : String(message.content || '');
+            const detectedCalls = findActiveToolCallsInText(scanText);
+            if (detectedCalls.length === 0) {
+                const pendingCall = findPendingActiveToolCallInText(scanText);
+                if (!pendingCall) return [];
+
+                let toolBuffer = scanText;
+                if (!message._activeToolCaptureActive) {
+                    const firstIndex = Math.max(0, pendingCall.index ?? pendingCall.mainIndex ?? scanText.indexOf(pendingCall.raw));
+                    message.content = scanText.slice(0, firstIndex)
+                        .replace(/\n{3,}/g, '\n\n')
+                        .trim();
+                    toolBuffer = scanText.slice(firstIndex);
+                    message._activeToolCaptureActive = true;
+                }
+                upsertPendingActiveToolCallToAssistant(message, {
+                    ...pendingCall,
+                    raw: toolBuffer,
+                    query: String(toolBuffer || '').replace(new RegExp(`^\\s*<\\s*${escapeRegexText(pendingCall.callLabel)}\\s*:\\s*`, 'i'), '')
+                });
+                message._activeToolPendingText = toolBuffer;
+                message.shouldAnimate = false;
+                message.skipReveal = true;
+                activeToolHandoffPending.value = true;
+                return [];
+            }
+
+            let toolBuffer = scanText;
+            let callsForUi = detectedCalls;
+            if (!message._activeToolCaptureActive) {
+                const firstIndex = Math.max(0, detectedCalls[0].index ?? detectedCalls[0].mainIndex ?? scanText.indexOf(detectedCalls[0].raw));
+                message.content = scanText.slice(0, firstIndex)
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+                message.skipReveal = true;
+                toolBuffer = scanText.slice(firstIndex);
+                callsForUi = findActiveToolCallsInText(toolBuffer);
+                message._activeToolCaptureActive = true;
+            }
+
+            const toolUis = appendActiveToolCallsToAssistant(message, callsForUi, options);
+            if (toolUis.length > 0) {
+                activeToolHandoffPending.value = true;
+            }
+            message._activeToolPendingText = removeActiveToolCallRawsFromText(toolBuffer, callsForUi);
+            message.shouldAnimate = false;
+            return toolUis;
+        };
+
+        const cleanupActiveToolCaptureState = (message) => {
+            if (!message) return;
+            delete message._activeToolCaptureActive;
+            delete message._activeToolPendingText;
+            delete message._activeToolPendingUiId;
+        };
+
+        const resolveActiveToolForUi = (toolUi) => {
+            const baseCallName = normalizeActiveToolBaseCallName(
+                toolUi?.baseCallName
+                || toolUi?.callName
+                || 'tool_memory'
+            );
+            const enabledMatch = getEnabledActiveTools().find(tool => (
+                tool.id === toolUi?.toolId
+                || normalizeActiveToolBaseCallName(tool.callName) === baseCallName
+            ));
+            if (enabledMatch) return enabledMatch;
+            return getDefaultActiveToolDefinitions().find(tool => (
+                tool.id === toolUi?.toolId
+                || normalizeActiveToolBaseCallName(tool.callName) === baseCallName
+            )) || createDefaultActiveTool();
+        };
+
+        const buildActiveToolCallFromUi = (toolUi) => {
+            const tool = resolveActiveToolForUi(toolUi);
+            return {
+                tool,
+                mode: toolUi?.mode || 'add',
+                callLabel: toolUi?.callName || getActiveToolCallLabels(tool).add,
+                query: String(toolUi?.query || '').trim(),
+                raw: toolUi?.raw || ''
+            };
+        };
+
+        const handleActiveToolCallFromAssistant = async (assistantMessage, activeToolDepth = 0) => {
+            promoteActiveToolCallsFromAssistant(assistantMessage);
+            let toolUis = Array.isArray(assistantMessage?.toolCalls)
+                ? assistantMessage.toolCalls.filter(toolCall => ['queued', 'running'].includes(toolCall?.status))
+                : [];
+            let toolCalls = toolUis.map(buildActiveToolCallFromUi).filter(toolCall => toolCall.query);
+
+            if (toolCalls.length === 0) {
+                toolCalls = findActiveToolCallsInAssistantMessage(assistantMessage);
+            }
+            if (toolCalls.length === 0) {
+                const receivingToolUis = Array.isArray(assistantMessage?.toolCalls)
+                    ? assistantMessage.toolCalls.filter(toolCall => toolCall?.status === 'receiving')
+                    : [];
+                if (receivingToolUis.length > 0) {
+                    receivingToolUis.forEach(toolUi => {
+                        toolUi.status = 'error';
+                        toolUi.error = '工具调用没有完整输出，请重试。';
+                        toolUi.resultText = toolUi.error;
+                    });
+                    await saveChatHistoryNow();
+                }
+                cleanupActiveToolCaptureState(assistantMessage);
+                activeToolHandoffPending.value = false;
+                return false;
+            }
+
+            if (activeToolDepth >= ACTIVE_TOOL_MAX_AUTO_CONTINUE) {
+                if (toolUis.length === 0) {
+                    stripActiveToolCallsFromAssistant(assistantMessage, toolCalls);
+                } else {
+                    toolUis.forEach(toolUi => {
+                        toolUi.status = 'error';
+                    });
+                }
+                cleanupActiveToolCaptureState(assistantMessage);
+                activeToolHandoffPending.value = false;
+                await saveChatHistoryNow();
+                return false;
+            }
+
+            if (toolUis.length === 0) {
+                toolUis = attachActiveToolCallsToAssistant(assistantMessage, toolCalls);
+            }
+            if (toolUis.length === 0) {
+                cleanupActiveToolCaptureState(assistantMessage);
+                activeToolHandoffPending.value = false;
+                return false;
+            }
+            await saveChatHistoryNow();
+
+            const toolAbort = new AbortController();
+            activeToolQueueRunning.value = true;
+            activeToolHandoffPending.value = false;
+            activeToolQueueAbortController = toolAbort;
+            let continuationToolUi = null;
+            let hasToolResult = false;
+
+            const applyActiveToolSuccessRecord = (record) => {
+                if (!record?.ok) return;
+                updateActiveToolResultContext(record.resultContext, record.toolCall.mode);
+                continuationToolUi = record.toolUi;
+                hasToolResult = true;
+            };
+
+            const runActiveToolCallSafely = async (toolCall, toolUi, options = {}) => {
+                try {
+                    if (toolAbort.signal.aborted) throw createAbortReason('Generation cancelled by user');
+                    if (options.markRunning !== false) {
+                        toolUi.status = 'running';
+                        await saveChatHistoryNow();
+                    }
+
+                    if (isVectorActiveTool(toolCall.tool) && !memorySettings.enabled) {
+                        throw new Error('记忆系统未开启，无法执行向量检索。');
+                    }
+
+                    const results = isKeywordActiveTool(toolCall.tool)
+                        ? searchDialogueByKeywordForTool(toolCall.query, toolCall.tool.resultCount, {
+                            excludeMessageId: assistantMessage.id
+                        })
+                        : isWebActiveTool(toolCall.tool)
+                        ? await searchWebByTavilyForTool(
+                            toolCall.query,
+                            toolCall.tool,
+                            toolAbort.signal
+                        )
+                        : isWorldInfoActiveTool(toolCall.tool)
+                        ? await runWorldInfoToolForActiveTool(toolCall)
+                        : await searchVectorMemoriesForTool(
+                            toolCall.query,
+                            toolCall.tool.resultCount,
+                            toolAbort.signal
+                        );
+                    if (toolAbort.signal.aborted) throw createAbortReason('Generation cancelled by user');
+
+                    const resultContext = formatActiveToolResultContext(toolCall.tool, toolCall.query, results, toolCall.mode);
+                    toolUi.status = 'done';
+                    toolUi.resultCount = Array.isArray(results) ? results.length : 0;
+                    toolUi.resultText = resultContext;
+                    if (Array.isArray(results?.worldInfoMutations) && results.worldInfoMutations.length > 0) {
+                        toolUi.worldInfoMutations = cloneForStorage(results.worldInfoMutations);
+                    } else {
+                        delete toolUi.worldInfoMutations;
+                    }
+                    await saveChatHistoryNow();
+                    return {
+                        ok: true,
+                        toolCall,
+                        toolUi,
+                        resultContext
+                    };
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        return { aborted: true, toolCall, toolUi };
+                    }
+                    toolUi.status = 'error';
+                    toolUi.error = err.message || '工具检索失败';
+                    toolUi.resultText = toolUi.error;
+                    await saveChatHistoryNow();
+                    return { ok: false, toolCall, toolUi, error: err };
+                }
+            };
+
+            const flushWebToolBatch = async (webBatch) => {
+                if (!webBatch.length) return;
+                webBatch.forEach(({ toolUi }) => {
+                    toolUi.status = 'running';
+                });
+                await saveChatHistoryNow();
+
+                const records = await Promise.all(webBatch.map(({ toolCall, toolUi }) => (
+                    runActiveToolCallSafely(toolCall, toolUi, { markRunning: false })
+                )));
+                if (records.some(record => record?.aborted)) {
+                    throw createAbortReason('Generation cancelled by user');
+                }
+                records.forEach(applyActiveToolSuccessRecord);
+                webBatch.length = 0;
+            };
+
+            try {
+                const webBatch = [];
+                for (let index = 0; index < toolCalls.length; index += 1) {
+                    const toolCall = toolCalls[index];
+                    const toolUi = toolUis[index];
+                    if (isWebActiveTool(toolCall.tool)) {
+                        webBatch.push({ toolCall, toolUi });
+                        continue;
+                    }
+
+                    await flushWebToolBatch(webBatch);
+                    const record = await runActiveToolCallSafely(toolCall, toolUi);
+                    if (record?.aborted) {
+                        markActiveToolInlineWorkCancelled();
+                        await saveChatHistoryNow();
+                        return false;
+                    }
+                    applyActiveToolSuccessRecord(record);
+                }
+                await flushWebToolBatch(webBatch);
+
+                if (!hasToolResult || !continuationToolUi) return false;
+                if (toolAbort.signal.aborted) {
+                    markActiveToolInlineWorkCancelled();
+                    await saveChatHistoryNow();
+                    return false;
+                }
+
+                continuationToolUi.status = 'continuing';
+                cleanupActiveToolCaptureState(assistantMessage);
+                activeToolQueueRunning.value = false;
+                activeToolContinuationPending.value = true;
+                await saveChatHistoryNow();
+                await generateResponse(Date.now(), {
+                    activeToolDepth: activeToolDepth + 1,
+                    continueAssistantMessageId: assistantMessage.id,
+                    continuationToolCallId: continuationToolUi.id
+                });
+                if (continuationToolUi.status === 'continuing') {
+                    continuationToolUi.status = 'done';
+                }
+                await saveChatHistoryNow();
+                return true;
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    markActiveToolInlineWorkCancelled();
+                    await saveChatHistoryNow();
+                    return false;
+                }
+                if (continuationToolUi) {
+                    continuationToolUi.status = 'error';
+                    continuationToolUi.error = err.message || '工具续写失败';
+                    continuationToolUi.resultText = continuationToolUi.error;
+                    await saveChatHistoryNow();
+                }
+                return false;
+            } finally {
+                if (activeToolQueueAbortController === toolAbort) {
+                    activeToolQueueAbortController = null;
+                }
+                activeToolHandoffPending.value = false;
+                activeToolQueueRunning.value = false;
+                activeToolContinuationPending.value = false;
+                cleanupActiveToolCaptureState(assistantMessage);
+                await saveChatHistoryNow();
+            }
         };
 
         const startBatchMemoryExtraction = async () => {
@@ -6377,6 +8693,8 @@ ${content}
 
 <生成格式>
 image###生成的提示词###
+</生成格式>
+</Tag_智能调整>
 
 特别提示：出现user或主角参与的情况(如被口、手交），禁止出现主角的人物形象(脸部，头部）！必须使用第一视角(POV）相关提示词！且要作为Character  Prompt添加，禁止出现角色卡和角色名字(包括英文和拼音），中文和{{user}}是明令禁止的，且一定要保持同一人物在上下文中的形象一致性，不要丢失人物特性(如有异色瞳特征人物），涉及人物常见特征(如发色，瞳孔颜色等）的提示词请增加权重\n</auto_image_gen>`,
                 constant: true,
@@ -7491,7 +9809,9 @@ image###生成的提示词###
 - “绝不编写 {{user}} 的发言或行动，绝不替名为 {{user}} 的角色做决定或采取行动。绝不扮演角色 {{user}}”
 - “角色的回应应侧重于描述和塑造 {{char}} 的行为，将 {{user}} 的行动留给 {{user}} 自己，将{{user}}的回应留给{{user}} 控制。”
 - “禁止时间跳跃”“禁止快速推进剧情”
-(严禁重复、补充或重述{{user}}的输入内容。禁止以任何方式补充或转述 {{user}} 的输入。)\n</anti_robbery>`;
+(严禁重复、补充或重述{{user}}的输入内容。禁止以任何方式补充或转述 {{user}} 的输入。)
+</Rule>
+</anti_robbery>`;
             const existingAntiRobberyPreset = presets.value.find(p => p.name === antiRobberyPresetName);
 
             if (!existingAntiRobberyPreset) {
@@ -8066,13 +10386,16 @@ image###生成的提示词###
             switchProfile, createNewProfile, deleteProfile, userProfiles, activeProfileId, showProfileDropdown,
             processMainContent,
             currentView, showMobileMenu, showDescriptionPanel, showModelSelector, modelSelectionTarget, openModelSelector, showChatModelSelector, showCharacterEditor, showAddCharacterMenu, showPresetEditor, showUiTemplateEditor,
+            showActiveToolEditor,
             showExportModal, sysInstruction, showInstructionPanel, exportType, exportItems, selectedExportIndices, // Export Modal
             showContextViewerModal, lastContextMessages, lastTriggeredWorldInfos, // Context Viewer
             showCharacterExportModal, characterToExportIndex, openCharacterExportModal, confirmCharacterExport, // Character Export Modal
             showUpdateModal, updateCountdown, latestUpdate, closeUpdateModal, isUpdateScrolledToBottom, checkUpdateScroll, // Update Modal
             showConfirmModal, confirmMessage, modelMode, showNoMemoryNeededModal, // Export for template
-            isGenerating, isRemoteGenerating, remoteEstimatedTime, isReceiving, isThinking, activeNativeReasoning, userInput, modelSearchQuery, activeModelTag, modelTags, characterSearchQuery, availableModels, filteredModels, filteredCharacters,
+            isGenerating, isRemoteGenerating, remoteEstimatedTime, isReceiving, isThinking, hasActiveToolInlineWork, activeToolInlineStatusText, isConversationBusy, activeToolContinuationMessageId, activeToolContinuationToolCallId, activeToolContinuationHasResponse, activeNativeReasoning, userInput, modelSearchQuery, activeModelTag, modelTags, characterSearchQuery, availableModels, filteredModels, filteredCharacters,
             user, settings, apiProviderOptions, selectedApiProvider, isCustomApiProvider, customApiProviderOption, showApiProviderSelector, selectApiProvider, characters, currentCharacter, currentCharacterIndex, chatHistory, displayedChatMessages, handleChatScroll, presets, regexScripts, worldInfo,
+            activeTools, editingActiveTool, normalizeActiveTools, isWebActiveTool, isWorldInfoActiveTool, getWorldInfoAccessMode, getActiveToolDisplayDescription, canConfigureActiveToolResultCount, getActiveToolResultCountMin, getActiveToolResultCountMax,
+            getVisibleToolCalls, getMergedToolCallItems, getMergedToolCallCount, getMergedToolCallTitle, getMergedToolCallStatus, isMergedToolCallLive, isMergedToolCallError, isMergedToolCallDone, getToolCallDisplayName, getToolCallModeText, getToolCallStatusText, getAssistantReasoningText, getMergedToolCallReasoningText, isMergedToolCallReasoningLive, isMergedToolCallReasoningOpen, toggleMergedToolCallReasoning,
             activeRegexCount, activeWorldInfoCount, activeUiTemplateCount, chatRoundStats, totalContextLength,
             editingCharacter, editingPreset, editingUiTemplate, toasts, chatContainer, inputBox, messageElements,
             lastUserMessageIndex, // Expose to template
@@ -8231,7 +10554,6 @@ image###生成的提示词###
             getCharacterWICount, getCharacterRegexCount,
             handleAvatarUpload, importCharacter, exportCharacter,
             createPreset, editPreset, savePreset, deletePreset, movePreset,
-
             renderMarkdown, messageUsesHtmlFrame, messageUsesWideLayout, parseCot, formatTimeAgo, closeCharacterEditor: () => showCharacterEditor.value = false,
             openExportModal: (type) => {
                 exportType.value = type;
@@ -8468,6 +10790,40 @@ image###生成的提示词###
                     regexScripts.value.splice(index, 1);
                     showToast('正则脚本已删除', 'success');
                 });
+            },
+
+            editActiveTool: (index) => {
+                const tool = activeTools.value[index];
+                if (!tool) return;
+                editingActiveTool.id = index;
+                editingActiveTool.data = normalizeActiveTool(JSON.parse(JSON.stringify(tool)));
+                showActiveToolEditor.value = true;
+            },
+            saveActiveTool: () => {
+                const index = editingActiveTool.id;
+                if (index === undefined || !activeTools.value[index]) {
+                    showActiveToolEditor.value = false;
+                    return;
+                }
+                const previous = activeTools.value[index];
+                const data = normalizeActiveTool({
+                    ...previous,
+                    id: previous.id,
+                    name: previous.name,
+                    enabled: previous.enabled,
+                    callName: previous.callName,
+                    type: previous.type,
+                    description: previous.description,
+                    displayDescription: previous.displayDescription,
+                    resultCount: editingActiveTool.data.resultCount,
+                    resultCountVersion: ACTIVE_TOOL_RESULT_COUNT_VERSION,
+                    tavilyApiKey: editingActiveTool.data.tavilyApiKey,
+                    worldInfoAccessMode: editingActiveTool.data.worldInfoAccessMode
+                });
+                activeTools.value[index] = data;
+                normalizeActiveTools();
+                showActiveToolEditor.value = false;
+                showToast('工具设置已保存', 'success');
             },
 
             // World Info Methods
