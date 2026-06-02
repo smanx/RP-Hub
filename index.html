@@ -489,7 +489,7 @@
                 <!-- Chat Messages -->
                 <div ref="chatContainer" @click="suggestedReplies = []; showChatModelSelector = false"
                     @scroll="handleChatScroll"
-                    class="flex-1 overflow-y-auto px-2 pt-14 md:pt-16 pb-40 md:pb-56 relative z-0 transition-all duration-500"
+                    class="flex-1 overflow-y-auto overflow-x-hidden px-2 pt-14 md:pt-16 pb-40 md:pb-56 relative z-0 transition-all duration-500"
                     :class="[
                         settings.immersiveMode ? 'space-y-12 md:space-y-16' : 'space-y-10 md:space-y-14',
                         !settings.useCharacterBackground || !currentCharacter || !currentCharacter?.avatar ? 'bg-gray-50' : ''
@@ -516,7 +516,7 @@
                     </div>
 
                     <template v-if="currentCharacter && chatHistory.length > 0">
-                    <template v-for="({ msg, index }, displayIndex) in displayedChatMessages" :key="msg.id || index">
+                    <template v-for="({ msg, index }, displayIndex) in displayedChatMessages" :key="index">
                     <div ref="messageElements"
                         :data-role="msg.role"
                         :data-chat-index="index"
@@ -2829,13 +2829,13 @@
                                     <label class="text-xs font-medium text-gray-500">分析对话层数</label>
                                     <span
                                         class="text-xs font-mono text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded border border-primary-100">
-                                        {{ settings.uiTemplateAnalysisDepth === 0 ? '无限' : settings.uiTemplateAnalysisDepth + ' 层' }}
+                                        {{ uiTemplateAnalysisDepthSlider + ' 层' }}
                                     </span>
                                 </div>
-                                <input type="range" v-model.number="uiTemplateAnalysisDepthSlider" min="4" max="21"
+                                <input type="range" v-model.number="uiTemplateAnalysisDepthSlider" min="4" max="8"
                                     step="1"
                                     class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-500">
-                                <p class="text-[10px] text-gray-400 mt-1.5">发送给变量分析模型的最近对话层数，拖到最右侧使用全部可用历史</p>
+                                <p class="text-[10px] text-gray-400 mt-1.5">发送给变量分析模型的最近对话层数，最高 8 层</p>
                             </div>
                         </div>
                     </div>

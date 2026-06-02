@@ -140,7 +140,7 @@ createApp({
         const pendingActiveToolContext = ref('');
         const activeToolResultContexts = ref([]);
         const tempUserSetup = reactive({ name: '', description: '', person: 'second' });
-        const characterDisplayLimit = ref(8);
+        const characterDisplayLimit = ref(20);
 
         // Quota State
         const showQuotaPanel = ref(false);
@@ -198,7 +198,6 @@ createApp({
             content: `
 ### RP-Hub 1.6.8
 
-- 大幅度减轻了卡顿现象的发生
 - 优化了部分动画效果，减轻了移动端渲染压力
 - 解决了部分浏览器输入框高度异常的问题
 - 解决了输入框滚动机制异常的问题
@@ -705,7 +704,7 @@ createApp({
         const currentCharacterIndex = ref(-1);
 
         const chatHistory = ref([]);
-        const CHAT_RENDER_INITIAL_LIMIT = 20;
+        const CHAT_RENDER_INITIAL_LIMIT = 25;
         const CHAT_RENDER_BATCH_SIZE = 10;
         const chatRenderLimit = ref(CHAT_RENDER_INITIAL_LIMIT);
         let isLoadingEarlierChatMessages = false;
@@ -3078,7 +3077,7 @@ ${content}
         });
 
         const loadMoreCharacters = () => {
-            characterDisplayLimit.value += 8;
+            characterDisplayLimit.value += 20;
         };
 
         const resetChatRenderWindow = () => {
@@ -3156,7 +3155,7 @@ ${content}
 
         // Reset limit when search query changes
         watch(characterSearchQuery, () => {
-            characterDisplayLimit.value = 8;
+            characterDisplayLimit.value = 20;
         });
 
         const activeRegexCount = computed(() => regexScripts.value.filter(r => r.enabled !== false && !systemRegexNames.includes(r.name)).length);
@@ -9308,12 +9307,10 @@ image###生成的提示词###
             const file = event.target.files[0];
             if (!file) return;
 
-            showAddCharacterMenu.value = false;
-
             // Reset file input
             event.target.value = '';
 
-            const processCharacterData = async (rawData, avatarUrl) => {
+            const processCharacterData = (rawData, avatarUrl) => {
                 try {
                     console.log('Processing Raw Data:', rawData);
                     let charData = rawData;
@@ -9516,11 +9513,8 @@ image###生成的提示词###
 
                     characters.value.push(char);
 
-                    // Auto-select the new character and enter chat immediately.
-                    const newCharacterIndex = characters.value.length - 1;
-                    showAddCharacterMenu.value = false;
-                    currentView.value = 'chat';
-                    await selectCharacter(newCharacterIndex, true);
+                    // Auto-select the new character
+                    selectCharacter(characters.value.length - 1, true);
 
                 } catch (err) {
                     console.error("Character processing error:", err);
@@ -9530,10 +9524,10 @@ image###生成的提示词###
 
             if (file.type === 'application/json') {
                 const reader = new FileReader();
-                reader.onload = async (e) => {
+                reader.onload = (e) => {
                     try {
                         const data = JSON.parse(e.target.result);
-                        await processCharacterData(data, null);
+                        processCharacterData(data, null);
                     } catch (err) {
                         showToast('JSON解析失败: ' + err.message, 'error');
                     }
@@ -9547,7 +9541,7 @@ image###生成的提示词###
                         const { data } = cardUtils.parsePngCharacterData(buffer);
                         const blob = new Blob([buffer], { type: 'image/png' });
                         const avatarUrl = await cardUtils.blobToDataUrl(blob);
-                        await processCharacterData(data, avatarUrl);
+                        processCharacterData(data, avatarUrl);
                     } catch (err) {
                         if (err.chunks) console.warn("Available chunks:", Object.keys(err.chunks));
                         console.error(err);
