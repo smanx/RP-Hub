@@ -83,6 +83,9 @@ createApp({
         const systemRegexNames = ['Auto Replace {{user}}', 'NAI画图正则'];
         const systemWorldInfoNames = ['自动生图'];
 
+        const IMAGE_GEN_DEFAULT_TOKEN = 'STA1N-c-Z5BnscH-l-D7kN1HyRobUj';
+        const IMAGE_GEN_BASE_URL = 'https://nai.sta1n.cn';
+
         // --- Default API Configuration ---
         const DEFAULT_API_PROVIDER_ID = 'sta1n';
         const DEFAULT_API_CONFIG = {
@@ -150,7 +153,7 @@ createApp({
         };
 
         const currentView = ref('chat');
-        const showMobileMenu = ref(false);
+        let isMobileSidebarOpen = false;
         const isSidebarCollapsed = ref(false);
         const showDescriptionPanel = ref(false);
         const showModelSelector = ref(false);
@@ -183,15 +186,15 @@ createApp({
             quotaLoading.value = true;
             quotaError.value = false;
             try {
-                const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-                const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+                const imageGenToken = (settings.imageGenKey || IMAGE_GEN_DEFAULT_TOKEN).trim();
+                const baseUrl = IMAGE_GEN_BASE_URL;
                 const response = await fetch(`${baseUrl}/api/api/getUser`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ toUserId: imageGenToken })
                 });
                 const data = await response.json();
-                if (data.status === 'ok' && (data.type === 'std' || data.type === 'sta1n')) {
+                if (data.status === 'ok' && data.type === 'sta1n') {
                     const val = Number.parseInt(data.data?.value, 10);
                     if (!Number.isFinite(val)) throw new Error('Invalid quota value');
                     quotaValue.value = val;
@@ -222,18 +225,23 @@ createApp({
             isUpdateScrolledToBottom.value = (el.scrollHeight - el.scrollTop - el.clientHeight) < 10;
         };
         const latestUpdate = reactive({
-            id: 10143, // 确保这是一个五位数ID，每次更新内容时增加这个数字
+            id: 10145, // 确保这是一个五位数ID，每次更新内容时增加这个数字
             date: new Date().toISOString().split('T')[0],
             title: '网站公告',
             content: `
-### RP-Hub 1.6.9
+### RP-Hub 1.7.0
 
-- 支持2K/4K生图选项
-- 修复了部分BUG
+- 为主界面与角色卡工坊更换了字体
+- 优化了大量UI细节，提升了沉浸感与体验感
+- 优化了生图的边框样式与插入位置
+- 支持了生图画师串自定义
+- 支持了生图期望数量选择
+- 优化了PC端沉浸模式的体验
+- 修复了部分渲染与功能性BUG
 
 本项目为全开源公益项目，严禁倒卖源码，二改需经作者授权
 
-#### 更新时间：06/03/23:37
+#### 更新时间：06/10/12:09
                     `
         });
 
@@ -302,6 +310,7 @@ createApp({
         const characterSearchQuery = ref('');
         const availableModels = ref([]);
         const toasts = ref([]);
+        let toastIdSeed = 0;
         const chatContainer = ref(null);
         const isChatFullscreen = ref(false);
         const isMobileKeyboardOpen = ref(false);
@@ -395,6 +404,21 @@ createApp({
             || window.innerWidth <= 768
         );
 
+        const setMobileSidebarOpen = (open) => {
+            const shouldOpen = !!open && isMobileViewport();
+            isMobileSidebarOpen = shouldOpen;
+            document.querySelector('.app-sidebar')?.classList.toggle('mobile-sidebar-open', shouldOpen);
+            document.querySelector('.mobile-overlay')?.classList.toggle('mobile-sidebar-open', shouldOpen);
+        };
+
+        const toggleMobileMenu = () => {
+            setMobileSidebarOpen(!isMobileSidebarOpen);
+        };
+
+        const closeMobileMenu = () => {
+            setMobileSidebarOpen(false);
+        };
+
         const applyMobileVisualViewportHeight = (height, { force = false } = {}) => {
             if (!Number.isFinite(height) || height <= 0) return;
             const safeHeight = Math.max(320, Math.round(height));
@@ -426,6 +450,7 @@ createApp({
 
         const syncMobileVisualViewport = ({ force = false } = {}) => {
             if (!isMobileViewport()) {
+                closeMobileMenu();
                 isMobileKeyboardOpen.value = false;
                 lastAppliedMobileViewportHeight = 0;
                 lastAppliedMobileKeyboardInset = 0;
@@ -547,17 +572,26 @@ createApp({
             uiTemplateModel: '',
             uiTemplateAnalysisDepth: 4,
             uiTemplateInjectContext: false,
-            showNativeReasoning: true,
+            fontFamily: 'modern',
+            fontFamilyVersion: 4,
             fontSize: window.innerWidth > 768 ? 16 : 14,
             autoScroll: true,
             imageGenKey: '',
             imageStyle: 'vertical',
+            customImageArtists: '',
             imageSize: '竖图',
+            imageGenCount: 2,
             qualityModel: DEFAULT_API_CONFIG.qualityModel,
             balancedModel: DEFAULT_API_CONFIG.balancedModel,
             fastModel: DEFAULT_API_CONFIG.fastModel,
             suggestionModel: DEFAULT_API_CONFIG.suggestionModel
         });
+
+        const normalizeFontFamily = (value) => ['modern', 'serif', 'system'].includes(value) ? value : 'modern';
+        const applyFontFamily = (value) => {
+            document.documentElement.dataset.appFont = normalizeFontFamily(value);
+        };
+        watch(() => settings.fontFamily, applyFontFamily, { immediate: true });
 
         const showApiProviderSelector = ref(false);
         const selectedApiProviderId = ref(DEFAULT_API_PROVIDER_ID);
@@ -703,7 +737,7 @@ createApp({
         }, { deep: true });
 
         // Watch image gen and model settings for sync
-        watch(() => [settings.imageGenKey, settings.imageStyle, settings.qualityModel, settings.balancedModel, settings.fastModel, settings.suggestionModel, settings.uiTemplateModel], () => {
+        watch(() => [settings.imageGenKey, settings.imageStyle, settings.customImageArtists, settings.imageGenCount, settings.qualityModel, settings.balancedModel, settings.fastModel, settings.suggestionModel, settings.uiTemplateModel, settings.fontFamily, settings.fontFamilyVersion], () => {
             syncSettingsToGenerator();
         });
 
@@ -738,18 +772,27 @@ createApp({
         let isLoadingEarlierChatMessages = false;
         let isChatTopUnlockArmed = true;
         const lastActiveCharacterId = ref(null); // For persistence
+        function hasActiveToolContinuationWork() {
+            return !!(activeToolContinuationPending.value || (
+                activeToolContinuationMessageId.value
+                && (isGenerating.value || isRemoteGenerating.value)
+            ));
+        }
+
         const hasActiveToolInlineWork = computed(() => {
-            if (activeToolHandoffPending.value || activeToolContinuationMessageId.value || activeToolContinuationPending.value || activeToolQueueRunning.value) return true;
+            if (activeToolHandoffPending.value || hasActiveToolContinuationWork() || activeToolQueueRunning.value) return true;
             if (!isGenerating.value && !isRemoteGenerating.value) return false;
             return chatHistory.value.some(msg => (
                 msg?.role === 'assistant'
                 && Array.isArray(msg.toolCalls)
-                && msg.toolCalls.some(toolCall => ['receiving', 'queued', 'running', 'continuing'].includes(toolCall?.status))
+                && msg.toolCalls.some(toolCall => ['receiving', 'queued', 'running'].includes(toolCall?.status))
             ));
         });
         const activeToolInlineStatusText = computed(() => {
-            if (activeToolQueueRunning.value) return '调用中';
-            if (activeToolContinuationMessageId.value || activeToolContinuationPending.value) {
+            const processText = getActiveToolInlineProcessText();
+            if (activeToolQueueRunning.value) return processText || '调用中';
+            if (hasActiveToolContinuationWork()) {
+                if (processText && !activeToolContinuationHasResponse.value) return processText;
                 return isThinking.value ? '思考中' : '生成中';
             }
             if (activeToolHandoffPending.value || hasActiveToolInlineWork.value) return '准备中';
@@ -763,24 +806,34 @@ createApp({
             { value: 'user', label: 'User消息' },
             { value: 'assistant', label: 'AI消息' }
         ];
+        const fontFamilyOptions = [
+            { value: 'modern', label: '现代通用字体' },
+            { value: 'serif', label: '衬线字体' },
+            { value: 'system', label: '系统字体' }
+        ];
         const imageStyleOptions = [
             { value: 'vertical', label: '韩漫小清新风' },
             { value: 'r18', label: '2.5D唯美风' },
             { value: 'lolita25d', label: '2.5D唯美风（萝）' },
             { value: 'anime', label: '本子动漫风' },
-            { value: 'galgame', label: 'GalGame风' }
+            { value: 'galgame', label: 'GalGame风' },
+            { value: 'custom', label: '自定义' }
         ];
         const imageSizeOptions = [
             { value: '竖图', label: '竖图(-1)' },
             { value: '横图', label: '横图(-1)' },
             { value: '方图', label: '方图(-1)' },
-            { value: '2K竖图', label: '2K竖图(-8)' },
-            { value: '2K横图', label: '2K横图(-8)' },
-            { value: '2K方图', label: '2K方图(-8)' },
-            { value: '4K竖图', label: '4K竖图(-15)' },
-            { value: '4K横图', label: '4K横图(-15)' },
-            { value: '4K方图', label: '4K方图(-15)' }
+            { value: '2K竖图', label: '2K竖图(-15)' },
+            { value: '2K横图', label: '2K横图(-15)' },
+            { value: '2K方图', label: '2K方图(-15)' },
+            { value: '4K竖图', label: '4K竖图(-25)' },
+            { value: '4K横图', label: '4K横图(-25)' },
+            { value: '4K方图', label: '4K方图(-25)' }
         ];
+        const imageGenCountOptions = [1, 2, 3, 4, 5, 6].map(count => ({
+            value: count,
+            label: `${count} 张`
+        }));
         const uiTemplatePlacementOptions = [
             { value: 'top', label: '对话顶部' },
             { value: 'bottom', label: '对话底部' }
@@ -1983,7 +2036,11 @@ createApp({
 
                 const savedSettings = await getStoredValue('settings');
                 if (savedSettings) {
-                    Object.assign(settings, savedSettings);
+                    Object.keys(savedSettings).forEach(key => {
+                        if (Object.prototype.hasOwnProperty.call(settings, key)) {
+                            settings[key] = savedSettings[key];
+                        }
+                    });
                     if (!Object.prototype.hasOwnProperty.call(savedSettings, 'apiProviderId')) {
                         const legacyProvider = getApiProviderByUrl(savedSettings.apiUrl);
                         settings.apiProviderId = legacyProvider?.id || (savedSettings.apiUrl ? 'custom' : DEFAULT_API_PROVIDER_ID);
@@ -1993,6 +2050,12 @@ createApp({
                 } else {
                     normalizeApiProviderSettings();
                 }
+                if ((!savedSettings || Number(savedSettings.fontFamilyVersion || 0) < 4) && settings.fontFamily === 'serif') {
+                    settings.fontFamily = 'modern';
+                }
+                settings.fontFamily = normalizeFontFamily(settings.fontFamily);
+                settings.fontFamilyVersion = 4;
+                applyFontFamily(settings.fontFamily);
                 delete settings.renderLayerLimit;
                 settings.contextSize = MAX_CONTEXT_SIZE;
                 settings.stream = true;
@@ -2138,12 +2201,6 @@ createApp({
                 return entry ? entry.enabled : false;
             },
             set: (val) => {
-                // 如果要开启生图，必须先检查密钥
-                if (val && (!settings.imageGenKey || settings.imageGenKey.trim() === '')) {
-                    showToast('缺少生图密钥，请前往设置中配置', 'error');
-                    return;
-                }
-
                 const entry = worldInfo.value.find(w => w.comment === '自动生图');
                 if (entry) {
                     entry.enabled = val;
@@ -2152,6 +2209,31 @@ createApp({
                 }
             }
         });
+
+        const showAutoImageGenToggleToast = (enabled) => {
+            showToast(enabled ? '自动生图已开启' : '自动生图已关闭', enabled ? 'success' : 'info');
+        };
+
+        const setAutoImageGenEnabled = (enabled) => {
+            isAutoImageGenEnabled.value = enabled;
+            const changed = isAutoImageGenEnabled.value === enabled;
+            if (changed) showAutoImageGenToggleToast(enabled);
+            return changed;
+        };
+
+        const toggleAutoImageGen = () => {
+            setAutoImageGenEnabled(!isAutoImageGenEnabled.value);
+        };
+
+        const setWorldInfoEnabled = (entry, enabled, event) => {
+            if (entry?.comment === '自动生图') {
+                const changed = setAutoImageGenEnabled(enabled);
+                if (!changed && event?.target) event.target.checked = isAutoImageGenEnabled.value;
+                return;
+            }
+
+            if (entry) entry.enabled = enabled;
+        };
 
         const isGeneratingSuggestions = ref(false);
         const suggestedReplies = ref([]);
@@ -2213,12 +2295,14 @@ createApp({
             }
         };
 
-        const updateImageGenRegexState = () => {
-            if (!isAutoImageGenEnabled.value) return;
-
+        const updateImageGenRegexState = ({ enableRegex = false } = {}) => {
             const imageGenRegexName = 'NAI画图正则';
-            const regex = regexScripts.value.find(r => r.name === imageGenRegexName);
-            if (!regex) return;
+            let regex = regexScripts.value.find(r => r.name === imageGenRegexName);
+            if (!regex) {
+                enforceSpecialRules();
+                regex = regexScripts.value.find(r => r.name === imageGenRegexName);
+                if (!regex) return [];
+            }
 
             const defaultArtists = '[[[artist:dishwasher1910]]], {{yd_(orange_maru)}}, [artist:ciloranko], [artist:sho_(sho_lwlw)], [ningen mame], year 2024,';
             const r18Artists = "0.9::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
@@ -2240,6 +2324,9 @@ createApp({
             } else if (settings.imageStyle === 'galgame') {
                 targetArtists = galgameArtists;
                 styleName = 'GalGame风';
+            } else if (settings.imageStyle === 'custom') {
+                targetArtists = settings.customImageArtists || '';
+                styleName = '自定义';
             }
 
             // 动态替换 URL 中的 artist 和 size 参数
@@ -2256,7 +2343,7 @@ createApp({
             // 检查 Artist 变化
             const oldArtist = oldReplacement.match(/artist=([\s\S]*?)&size=/)?.[1] || oldReplacement.match(/artist=([^&]+)/)?.[1];
             if (oldArtist !== encodedTargetArtists) {
-                messages.push(`画风: ${styleName}`);
+                messages.push(styleName);
             }
             // 检查 Size 变化
             const oldSize = oldReplacement.match(/size=([^&]+)/)?.[1];
@@ -2264,7 +2351,7 @@ createApp({
                 messages.push(`比例: ${settings.imageSize}`);
             }
 
-            if (!regex.enabled) {
+            if (enableRegex && !regex.enabled) {
                 regex.enabled = true;
                 messages.push(`${imageGenRegexName} 已启用`);
             }
@@ -2275,7 +2362,7 @@ createApp({
         watch(isAutoImageGenEnabled, (newVal) => {
             if (newVal) {
                 let messages = [];
-                const regexMessages = updateImageGenRegexState();
+                const regexMessages = updateImageGenRegexState({ enableRegex: true });
                 if (regexMessages && regexMessages.length > 0) {
                     messages.push(...regexMessages);
                 }
@@ -2287,21 +2374,33 @@ createApp({
         });
 
         watch(() => settings.imageStyle, () => {
-            if (isAutoImageGenEnabled.value) {
-                const messages = updateImageGenRegexState();
-                if (messages && messages.length > 0) {
-                    showToast('生图风格已切换：' + messages.join('，'), 'success');
-                }
+            const messages = updateImageGenRegexState({ enableRegex: isAutoImageGenEnabled.value });
+            if (isAutoImageGenEnabled.value && messages && messages.length > 0) {
+                showToast('生图风格已切换：' + messages.join('，'), 'success');
+            }
+        });
+
+        watch(() => settings.customImageArtists, () => {
+            if (settings.imageStyle === 'custom') {
+                updateImageGenRegexState({ enableRegex: isAutoImageGenEnabled.value });
             }
         });
 
         watch(() => settings.imageSize, () => {
-            if (isAutoImageGenEnabled.value) {
-                const messages = updateImageGenRegexState();
-                if (messages && messages.length > 0) {
-                    showToast('生图比例已切换：' + messages.join('，'), 'success');
-                }
+            const messages = updateImageGenRegexState({ enableRegex: isAutoImageGenEnabled.value });
+            if (isAutoImageGenEnabled.value && messages && messages.length > 0) {
+                showToast('生图比例已切换：' + messages.join('，'), 'success');
             }
+        });
+
+        watch(() => settings.imageGenCount, () => {
+            enforceSpecialRules();
+        });
+
+        const isDesktopSidebarViewport = () => window.matchMedia('(min-width: 768px)').matches;
+        watch(() => settings.immersiveMode, (enabled) => {
+            if (!isDesktopSidebarViewport()) return;
+            isSidebarCollapsed.value = !!enabled;
         });
 
         // Debounce function
@@ -3350,7 +3449,7 @@ ${content}
 
         // Toast Notification
         const showToast = (message, type = 'info', duration = 2000) => {
-            const id = Date.now();
+            const id = `${Date.now()}-${toastIdSeed++}`;
             toasts.value.push({ id, message, type });
             setTimeout(() => {
                 toasts.value = toasts.value.filter(t => t.id !== id);
@@ -3426,8 +3525,13 @@ ${content}
             let result = text;
             // options: { isDisplay, isPrompt, role, depth }
             const { isDisplay = false, isPrompt = false, role = null, depth = 0 } = options;
+            const orderedScripts = [...regexScripts.value].sort((a, b) => {
+                const aIsImageGen = (a.name || a.scriptName) === 'NAI画图正则';
+                const bIsImageGen = (b.name || b.scriptName) === 'NAI画图正则';
+                return aIsImageGen === bIsImageGen ? 0 : (aIsImageGen ? 1 : -1);
+            });
 
-            regexScripts.value.forEach(script => {
+            orderedScripts.forEach(script => {
                 // 明确检查 enabled 字段：只有显式设置为 false 才跳过
                 if (script.enabled === false) return;
 
@@ -3992,8 +4096,8 @@ ${content}
                 const id = setTimeout(() => controller.abort(), 10000);
                 const startTime = performance.now();
 
-                const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-                const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+                const imageGenToken = (settings.imageGenKey || IMAGE_GEN_DEFAULT_TOKEN).trim();
+                const baseUrl = IMAGE_GEN_BASE_URL;
 
                 await fetch(baseUrl, {
                     method: 'HEAD',
@@ -4168,7 +4272,7 @@ ${content}
                     showToast('当前浏览器不支持全屏', 'warning');
                     return;
                 }
-                showMobileMenu.value = false;
+                closeMobileMenu();
                 isChatFullscreen.value = true;
                 await requestNativeFullscreen(fullscreenTarget);
             } catch (err) {
@@ -8088,57 +8192,33 @@ ${content}
             return mode === 'cover' ? '覆盖向量检索' : '向量检索';
         };
 
-        const getMergedToolCallItems = (toolCalls, toolCall) => {
-            if (!Array.isArray(toolCalls) || !toolCall) return [];
-            const groupKey = getActiveToolUiGroupKey(toolCall);
-            return toolCalls.filter(item => getActiveToolUiGroupKey(item) === groupKey);
+        const TOOL_CALL_RUNNING_STATUSES = ['running', 'receiving', 'queued'];
+        const getToolCallEffectiveStatus = (toolCall) => (
+            toolCall?.status === 'continuing' ? 'done' : (toolCall?.status || 'queued')
+        );
+
+        const getCurrentThinkingToolCall = (message) => {
+            const toolCalls = Array.isArray(message?.toolCalls) ? message.toolCalls : [];
+            const runningToolCall = toolCalls.find(toolCall => TOOL_CALL_RUNNING_STATUSES.includes(getToolCallEffectiveStatus(toolCall)));
+            if (runningToolCall) return runningToolCall;
+            if (
+                activeToolContinuationMessageId.value === message?.id
+                && !activeToolContinuationHasResponse.value
+                && (isGenerating.value || isRemoteGenerating.value || activeToolContinuationPending.value)
+            ) {
+                return toolCalls.find(toolCall => toolCall?.id === activeToolContinuationToolCallId.value) || null;
+            }
+            return null;
         };
 
-        const getVisibleToolCalls = (toolCalls) => {
-            if (!Array.isArray(toolCalls)) return [];
-            const seen = new Set();
-            return toolCalls.filter(toolCall => {
-                const groupKey = getActiveToolUiGroupKey(toolCall);
-                if (seen.has(groupKey)) return false;
-                seen.add(groupKey);
-                return true;
-            });
-        };
-
-        const getMergedToolCallCount = (toolCalls, toolCall) => getMergedToolCallItems(toolCalls, toolCall).length;
-
-        const getMergedToolCallTitle = (toolCalls, toolCall) => {
-            const items = getMergedToolCallItems(toolCalls, toolCall);
-            const names = [...new Set(items.map(getToolCallDisplayName).filter(Boolean))];
-            const name = names.length === 1 ? names[0] : getToolCallDisplayName(toolCall);
-            return items.length > 1 ? `${name} · ${items.length} 次` : name;
-        };
-
-        const getMergedToolCallStatus = (toolCalls, toolCall) => {
-            const items = getMergedToolCallItems(toolCalls, toolCall);
-            if (items.some(item => item?.status === 'running')) return 'running';
-            if (items.some(item => item?.status === 'receiving')) return 'receiving';
-            if (items.some(item => item?.status === 'queued')) return 'queued';
-            if (items.some(item => item?.status === 'continuing')) return 'continuing';
-            if (items.some(item => item?.status === 'error')) return 'error';
-            if (items.some(item => item?.status === 'done')) return 'done';
-            return toolCall?.status || 'queued';
-        };
-
-        const isMergedToolCallLive = (toolCalls, toolCall) => ['receiving', 'running', 'queued'].includes(getMergedToolCallStatus(toolCalls, toolCall));
-        const isMergedToolCallError = (toolCalls, toolCall) => getMergedToolCallStatus(toolCalls, toolCall) === 'error';
-        const isMergedToolCallDone = (toolCalls, toolCall) => ['done', 'continuing'].includes(getMergedToolCallStatus(toolCalls, toolCall));
-
-        const getToolCallStatusText = (toolCall) => {
-            const status = toolCall?.status || 'queued';
-            if (status === 'receiving') return '编辑中';
-            if (status === 'queued') return '等待中';
-            if (status === 'running') return '检索中';
-            if (status === 'done') return '已完成';
-            if (status === 'continuing') return '续写中';
-            if (status === 'error') return '失败';
-            return '准备中';
-        };
+        function getActiveToolInlineProcessText() {
+            for (let index = chatHistory.value.length - 1; index >= 0; index -= 1) {
+                const message = chatHistory.value[index];
+                const toolCall = getCurrentThinkingToolCall(message);
+                if (toolCall) return getToolCallDisplayName(toolCall);
+            }
+            return '';
+        }
 
         const getToolCallReasoningParts = (toolCalls) => (Array.isArray(toolCalls) ? toolCalls : [])
             .map(item => String(item?.reasoning || '').trim())
@@ -8160,24 +8240,93 @@ ${content}
             return parts.join('\n\n');
         };
 
-        const getMergedToolCallReasoningText = () => '';
-
-        const isMergedToolCallReasoningLive = (toolCalls, toolCall) => getMergedToolCallItems(toolCalls, toolCall)
-            .some(item => item?.status === 'continuing'
-                && activeToolContinuationToolCallId.value === item.id
-                && isThinking.value);
-
-        const isMergedToolCallReasoningOpen = (toolCalls, toolCall) => {
-            if (toolCall?.isReasoningOpen !== undefined) return toolCall.isReasoningOpen;
-            return getMergedToolCallItems(toolCalls, toolCall).some(item => item?.isReasoningOpen);
+        const hasThinkingOrTools = (message) => {
+            if (!message) return false;
+            return !!(
+                getAssistantReasoningText(message)
+                || (Array.isArray(message.toolCalls) && message.toolCalls.length > 0)
+                || (parseCot(message.content || '').cot)
+            );
         };
 
-        const toggleMergedToolCallReasoning = (toolCalls, toolCall) => {
-            const nextOpen = !isMergedToolCallReasoningOpen(toolCalls, toolCall);
-            getMergedToolCallItems(toolCalls, toolCall).forEach(item => {
-                item.isReasoningOpen = nextOpen;
-            });
-            if (toolCall) toolCall.isReasoningOpen = nextOpen;
+        const isMessageThinkingOrRunning = (message) => {
+            const isLast = chatHistory.value && chatHistory.value[chatHistory.value.length - 1] === message;
+            if (isLast && isThinking.value) return true;
+            if (getCurrentThinkingToolCall(message)) return true;
+            const cotInfo = parseCot(message.content || '');
+            if (isLast && (isGenerating.value || isRemoteGenerating.value) && cotInfo.cot && !cotInfo.isFinished) {
+                return true;
+            }
+            return false;
+        };
+
+        const isThinkingSummaryOpen = (message) => {
+            if (message?.isSummaryOpen !== undefined) return message.isSummaryOpen !== false;
+            return isMessageThinkingOrRunning(message);
+        };
+
+        const toggleThinkingSummary = (message) => {
+            if (!message) return;
+            message.isSummaryOpen = !isThinkingSummaryOpen(message);
+            saveChatHistoryNow();
+        };
+
+        const markThinkingSummaryDetailOpened = (message, event) => {
+            if (!message || !event?.target?.open) return;
+            message.hasOpenedSummaryDetail = true;
+            if (message.isSummaryOpen === undefined && isMessageThinkingOrRunning(message)) {
+                message.isSummaryOpen = true;
+            }
+            saveChatHistoryNow();
+        };
+
+        const getToolCallStepText = (toolCall) => {
+            const modeText = getToolCallModeText(toolCall);
+            return `${modeText}: ${toolCall.query}`;
+        };
+
+        const getTimelineSteps = (message) => {
+            const steps = [];
+            
+            // 1. 初始原生思考
+            const reasoning = getAssistantReasoningText(message);
+            if (reasoning && String(reasoning).trim()) {
+                steps.push({
+                    id: 'init-reasoning',
+                    type: 'thinking',
+                    text: String(reasoning).trim(),
+                    title: '原生思考'
+                });
+            }
+            
+            // 2. 工具调用列表
+            if (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
+                message.toolCalls.forEach((toolCall, idx) => {
+                    const status = getToolCallEffectiveStatus(toolCall);
+                    steps.push({
+                        id: `tool-call-${toolCall.id || idx}`,
+                        type: 'tool',
+                        toolCall: toolCall,
+                        title: getToolCallDisplayName(toolCall),
+                        text: getToolCallStepText(toolCall),
+                        status,
+                        progressText: status === 'done' ? '1/1' : '0/1'
+                    });
+                });
+            }
+            
+            // 3. 分析过程 (CoT)
+            const cotInfo = parseCot(message.content || '');
+            if (cotInfo.cot && String(cotInfo.cot).trim()) {
+                steps.push({
+                    id: 'cot-reasoning',
+                    type: 'thinking',
+                    text: String(cotInfo.cot).trim(),
+                    title: '分析过程'
+                });
+            }
+            
+            return steps;
         };
 
         const stripActiveToolCallsFromAssistant = (message, toolCalls) => {
@@ -8910,8 +9059,8 @@ ${content}
         };
 
         const enforceSpecialRules = () => {
-            const imageGenToken = settings.imageGenKey ? settings.imageGenKey : 'STD-QMqT4lxiWqWMVneiePiE';
-            const baseUrl = imageGenToken.trim().toUpperCase().startsWith('STA1N') ? 'https://nai.sta1n.cn' : 'https://std.loliyc.com';
+            const imageGenToken = (settings.imageGenKey || IMAGE_GEN_DEFAULT_TOKEN).trim();
+            const baseUrl = IMAGE_GEN_BASE_URL;
 
             // 1. NAI画图正则 (统一版本)
             const imageGenRegexName = 'NAI画图正则';
@@ -8930,13 +9079,15 @@ ${content}
                 targetArtists = animeArtists;
             } else if (settings.imageStyle === 'galgame') {
                 targetArtists = galgameArtists;
+            } else if (settings.imageStyle === 'custom') {
+                targetArtists = settings.customImageArtists || '';
             }
 
             const encodedTargetArtists = encodeURIComponent(targetArtists);
             const imageGenRegexContent = {
                 name: imageGenRegexName,
                 regex: '/image###([\\s\\S]*?)###/g',
-                replacement: '<div style="width: auto; height: auto; max-width: 100%; border: 8px solid transparent; background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF); position: relative; border-radius: 16px; overflow: hidden; display: flex; justify-content: center; align-items: center; animation: gradientBG 3s ease infinite; box-shadow: 0 4px 15px rgba(204,229,255,0.3);"><div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(5px); width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></div><img src="' + baseUrl + '/generate?tag=$1&token=' + imageGenToken + '&model=nai-diffusion-4-5-full&artist=' + encodedTargetArtists + '&size=' + settings.imageSize + '&steps=40&scale=6&cfg=0&sampler=k_dpmpp_2m_sde&negative={{{{bad anatomy}}}},{bad feet},bad hands,{{{bad proportions}}},{blurry},cloned face,cropped,{{{deformed}}},{{{disfigured}}},error,{{{extra arms}}},{extra digit},{{{extra legs}}},extra limbs,{{extra limbs}},{fewer digits},{{{fused fingers}}},gross proportions,ink eyes,ink hair,jpeg artifacts,{{{{long neck}}}},low quality,{malformed limbs},{{missing arms}},{missing fingers},{{missing legs}},{{{more than 2 nipples}}},mutated hands,{{{mutation}}},normal quality,owres,{{poorly drawn face}},{{poorly drawn hands}},reen eyes,signature,text,{{too many fingers}},{{{ugly}}},username,uta,watermark,worst quality,{{{more than 2 legs}}},awkward hand sign,weird hand gesture,contorted hand,unnatural finger pose,deformed hand gesture,{shaka},{hang loose},{{rock on}},{shaka sign}&nocache=0&noise_schedule=karras"  alt="生成图片" style="max-width: 100%; height: auto; width: auto; display: block; object-fit: contain; transition: transform 0.3s ease; position: relative; z-index: 1;"></div><style>@keyframes gradientBG {0% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}50% {background-image: linear-gradient(225deg, #FFC9D9, #CCE5FF);}100% {background-image: linear-gradient(45deg, #FFC9D9, #CCE5FF);}}</style>',
+                replacement: '<div style="width: auto; height: auto; max-width: 100%; box-sizing: border-box; padding: 2px; border: 1px solid rgba(255,255,255,0.58); background: rgba(255,255,255,0.32); position: relative; border-radius: 12px; overflow: hidden; display: inline-flex; justify-content: center; align-items: center; box-shadow: 0 4px 14px rgba(148,163,184,0.06);"><img src="' + baseUrl + '/generate?tag=$1&token=' + imageGenToken + '&model=nai-diffusion-4-5-full&artist=' + encodedTargetArtists + '&size=' + settings.imageSize + '&steps=40&scale=6&cfg=0&sampler=k_dpmpp_2m_sde&negative={{{{bad anatomy}}}},{bad feet},bad hands,{{{bad proportions}}},{blurry},cloned face,cropped,{{{deformed}}},{{{disfigured}}},error,{{{extra arms}}},{extra digit},{{{extra legs}}},extra limbs,{{extra limbs}},{fewer digits},{{{fused fingers}}},gross proportions,ink eyes,ink hair,jpeg artifacts,{{{{long neck}}}},low quality,{malformed limbs},{{missing arms}},{missing fingers},{{missing legs}},{{{more than 2 nipples}}},mutated hands,{{{mutation}}},normal quality,owres,{{poorly drawn face}},{{poorly drawn hands}},reen eyes,signature,text,{{too many fingers}},{{{ugly}}},username,uta,watermark,worst quality,{{{more than 2 legs}}},awkward hand sign,weird hand gesture,contorted hand,unnatural finger pose,deformed hand gesture,{shaka},{hang loose},{{rock on}},{shaka sign}&nocache=0&noise_schedule=karras"  alt="生成图片" style="max-width: 100%; height: auto; width: auto; display: block; object-fit: contain; border-radius: 9px; transition: transform 0.3s ease;"></div>',
                 placement: [2],
                 markdownOnly: true,
                 promptOnly: false,
@@ -8958,11 +9109,12 @@ ${content}
 
             // 2. 自动生图世界书
             const autoImageGenWIName = '自动生图';
+            const imageGenCount = Math.min(6, Math.max(1, Number(settings.imageGenCount) || 2));
             const autoImageGenWIContent = {
                 comment: autoImageGenWIName,
                 keys: [],
-                content: `<auto_image_gen>\n用户已开启自动生图。每次回复的正文中必须在合适的位置穿插1-3张图，标准格式为：image###生成的提示词###，不能只输出文字正文；即使本轮剧情没有明显新画面，也必须根据当前最重要的场景生成至少1张。
-使用绘画tag对场景人物进行特写，并保证一个场景拥有1-3张图。
+                content: `<auto_image_gen>\n用户已开启自动生图。每次回复的正文中必须在合适的位置穿插图片，标准格式为：image###生成的提示词###，不能只输出文字正文；本轮必须生成${imageGenCount}张图片。
+使用绘画tag对场景人物进行特写，并保证一个场景拥有${imageGenCount}张图。
 注意:始终使用逗号分隔条目.另外请保证同一角色的特征，如发色，瞳孔颜色，体态，外貌的一致性.
 使用 image###生成的提示词### 的格式！
 注意：如为nsfw场景，生成的提示词的最开头必须带上 nsfw 标签！
@@ -9057,6 +9209,9 @@ image###生成的提示词###
 
         watch(() => settings.imageGenKey, () => {
             enforceSpecialRules();
+            if (isAutoImageGenEnabled.value) {
+                updateImageGenRegexState({ enableRegex: true });
+            }
             saveData();
             fetchQuota();
         });
@@ -9070,6 +9225,9 @@ image###生成的提示词###
                 if (msg.role === 'user' || msg.role === 'assistant') {
                     delete msg.skipReveal;
                     msg.shouldAnimate = true;
+                }
+                if (msg.role === 'assistant' && msg.isSummaryOpen === undefined && hasThinkingOrTools(msg)) {
+                    msg.isSummaryOpen = false;
                 }
                 return msg;
             });
@@ -9169,7 +9327,7 @@ image###生成的提示词###
 
             // Sync image style rules
             if (isAutoImageGenEnabled.value) {
-                const messages = updateImageGenRegexState();
+                const messages = updateImageGenRegexState({ enableRegex: true });
                 if (messages && messages.length > 0) {
                     showToast('已同步生图风格：' + messages.join('，'), 'success');
                 }
@@ -10399,7 +10557,7 @@ image###生成的提示词###
 
                 // Sync image style rules
                 if (isAutoImageGenEnabled.value) {
-                    updateImageGenRegexState();
+                    updateImageGenRegexState({ enableRegex: true });
                 }
 
                 // showToast(`欢迎回来，${user.name}`, 'success'); // Removed per user request
@@ -10441,6 +10599,7 @@ image###生成的提示词###
         });
 
         onBeforeUnmount(() => {
+            closeMobileMenu();
             document.removeEventListener('fullscreenchange', syncChatFullscreenState);
             document.removeEventListener('webkitfullscreenchange', syncChatFullscreenState);
             if (window.visualViewport) {
@@ -10519,7 +10678,7 @@ image###生成的提示词###
         return {
             switchProfile, createNewProfile, deleteProfile, userProfiles, activeProfileId, showProfileDropdown,
             processMainContent,
-            currentView, showMobileMenu, showDescriptionPanel, showModelSelector, modelSelectionTarget, openModelSelector, showChatModelSelector, showCharacterEditor, showAddCharacterMenu, showPresetEditor, showUiTemplateEditor,
+            currentView, showDescriptionPanel, showModelSelector, modelSelectionTarget, openModelSelector, showChatModelSelector, showCharacterEditor, showAddCharacterMenu, showPresetEditor, showUiTemplateEditor,
             showActiveToolEditor,
             showExportModal, sysInstruction, showInstructionPanel, exportType, exportItems, selectedExportIndices, // Export Modal
             showContextViewerModal, lastContextMessages, lastTriggeredWorldInfos, // Context Viewer
@@ -10527,9 +10686,9 @@ image###生成的提示词###
             showUpdateModal, updateCountdown, latestUpdate, closeUpdateModal, isUpdateScrolledToBottom, checkUpdateScroll, // Update Modal
             showConfirmModal, confirmMessage, modelMode, showNoMemoryNeededModal, // Export for template
             isGenerating, isRemoteGenerating, remoteEstimatedTime, isReceiving, isThinking, hasActiveToolInlineWork, activeToolInlineStatusText, isConversationBusy, activeToolContinuationMessageId, activeToolContinuationToolCallId, activeToolContinuationHasResponse, activeNativeReasoning, userInput, modelSearchQuery, activeModelTag, modelTags, characterSearchQuery, availableModels, filteredModels, filteredCharacters,
-            user, settings, apiProviderOptions, selectedApiProvider, isCustomApiProvider, customApiProviderOption, customApiProviderOptions, showApiProviderSelector, selectApiProvider, characters, currentCharacter, currentCharacterIndex, chatHistory, displayedChatMessages, handleChatScroll, presets, presetRoleOptions, imageStyleOptions, imageSizeOptions, scopeOptions, uiTemplatePlacementOptions, worldInfoPositionOptions, getPresetRoleLabel, getPresetRoleDisplayLabel, getPresetRoleBadgeClass, regexScripts, worldInfo,
+            user, settings, apiProviderOptions, selectedApiProvider, isCustomApiProvider, customApiProviderOption, customApiProviderOptions, showApiProviderSelector, selectApiProvider, characters, currentCharacter, currentCharacterIndex, chatHistory, displayedChatMessages, handleChatScroll, presets, presetRoleOptions, fontFamilyOptions, imageStyleOptions, imageSizeOptions, imageGenCountOptions, scopeOptions, uiTemplatePlacementOptions, worldInfoPositionOptions, getPresetRoleLabel, getPresetRoleDisplayLabel, getPresetRoleBadgeClass, regexScripts, worldInfo,
             activeTools, activeToolAggressivenessOptions: ACTIVE_TOOL_AGGRESSIVENESS_OPTIONS, getActiveToolAggressivenessLabel, editingActiveTool, normalizeActiveTools, isWebActiveTool, isWorldInfoActiveTool, getWorldInfoAccessMode, getActiveToolDisplayDescription, canConfigureActiveToolResultCount, getActiveToolResultCountMin, getActiveToolResultCountMax,
-            getVisibleToolCalls, getMergedToolCallItems, getMergedToolCallCount, getMergedToolCallTitle, getMergedToolCallStatus, isMergedToolCallLive, isMergedToolCallError, isMergedToolCallDone, getToolCallDisplayName, getToolCallModeText, getToolCallStatusText, getAssistantReasoningText, getMergedToolCallReasoningText, isMergedToolCallReasoningLive, isMergedToolCallReasoningOpen, toggleMergedToolCallReasoning,
+            getToolCallModeText, hasThinkingOrTools, isMessageThinkingOrRunning, isThinkingSummaryOpen, toggleThinkingSummary, markThinkingSummaryDetailOpened, getTimelineSteps,
             activeRegexCount, activeWorldInfoCount, activeUiTemplateCount, chatRoundStats, totalContextLength,
             editingCharacter, editingPreset, editingUiTemplate, toasts, chatContainer, isChatFullscreen, isMobileKeyboardOpen, inputBox, messageElements,
             lastUserMessageIndex, // Expose to template
@@ -10539,6 +10698,7 @@ image###生成的提示词###
             isAutoImageGenEnabled,
             isGeneratingSuggestions, suggestedReplies, generateSuggestions,
             apiStatus, apiLatency, imageGenStatus, imageGenLatency, checkAllStatuses, // Status Exports
+            toggleAutoImageGen, setWorldInfoEnabled,
             showQuotaPanel, quotaValue, quotaLoading, quotaError, quotaAvailable, fetchQuota, // Quota exports
             // Memory System Exports
             memories, memorySettings, isExtractingMemory, isBatchExtracting, batchExtractProgress, memoryExtractStatus,
@@ -10675,7 +10835,7 @@ image###生成的提示词###
                 };
                 reader.readAsText(file);
             },
-            toggleMobileMenu: () => showMobileMenu.value = !showMobileMenu.value,
+            toggleMobileMenu, closeMobileMenu,
             scrollToPreviousMessage, scrollToNextMessage,
             fetchModels, selectModel, sendMessage, autoResizeInput, handleChatInputFocus, handleChatInputBlur, stopGeneration, clearChat, toggleChatFullscreen,
             handleConfirm, handleCancel, // Export handlers
