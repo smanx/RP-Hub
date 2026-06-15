@@ -353,7 +353,7 @@
                         <path
                             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
-                    API 设置
+                    设置
                 </h3>
                 <div class="flex flex-col gap-4">
                     <!-- 仅保留风格和流式输出设定 -->
@@ -365,6 +365,13 @@
                                 @click="options.avatarStyle = 'default'">
                                 <span class="font-bold text-sm">韩漫小清新风</span>
                                 <div v-if="options.avatarStyle === 'default'"
+                                    class="absolute -right-3 -top-3 w-8 h-8 bg-primary/20 rounded-full blur-xl"></div>
+                            </div>
+                            <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 relative overflow-hidden select-none group"
+                                :class="options.avatarStyle === 'comicDoujin' ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20 shadow-sm' : 'border-base-300 bg-base-100 hover:border-base-content/30 hover:bg-base-200/50'"
+                                @click="options.avatarStyle = 'comicDoujin'">
+                                <span class="font-bold text-sm">漫画同人风</span>
+                                <div v-if="options.avatarStyle === 'comicDoujin'"
                                     class="absolute -right-3 -top-3 w-8 h-8 bg-primary/20 rounded-full blur-xl"></div>
                             </div>
                             <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 relative overflow-hidden select-none group"
@@ -384,7 +391,7 @@
                             <div class="border rounded-xl p-3 cursor-pointer transition-all duration-200 flex items-center justify-center gap-2 relative overflow-hidden select-none group"
                                 :class="options.avatarStyle === 'anime' ? 'border-accent bg-accent/10 text-accent ring-2 ring-accent/20 shadow-sm' : 'border-base-300 bg-base-100 hover:border-base-content/30 hover:bg-base-200/50'"
                                 @click="options.avatarStyle = 'anime'">
-                                <span class="font-bold text-sm">本子动漫风</span>
+                                <span class="font-bold text-sm">本子里番风</span>
                                 <div v-if="options.avatarStyle === 'anime'"
                                     class="absolute -right-3 -top-3 w-8 h-8 bg-accent/20 rounded-full blur-xl"></div>
                             </div>
@@ -399,7 +406,7 @@
                     </div>
                     <div class="grid grid-cols-1 gap-3 mt-2">
                         <div
-                            class="form-control w-full bg-base-200/40 rounded-xl border border-base-300/60 p-3 hover:border-primary/40 transition-colors">
+                            class="form-control w-full rounded-xl border border-base-300/60 p-3 hover:border-primary/40 transition-colors">
                             <label class="label cursor-pointer justify-between p-0">
                                 <span class="label-text font-medium flex items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
@@ -1048,33 +1055,6 @@
                                                         <div class="form-control">
                                                             <label
                                                                 class="label py-0 cursor-pointer gap-2 justify-start">
-                                                                <input type="checkbox" v-model="entry.excludeRecursion"
-                                                                    class="checkbox checkbox-xs checkbox-primary" />
-                                                                <span
-                                                                    class="label-text text-xs font-bold text-base-content/50">不可被递归</span>
-                                                            </label>
-                                                        </div>
-                                                        <div class="form-control">
-                                                            <label
-                                                                class="label py-0 cursor-pointer gap-2 justify-start">
-                                                                <input type="checkbox" v-model="entry.matchWholeWords"
-                                                                    class="checkbox checkbox-xs checkbox-primary" />
-                                                                <span
-                                                                    class="label-text text-xs font-bold text-base-content/50">全词匹配</span>
-                                                            </label>
-                                                        </div>
-                                                        <div class="form-control">
-                                                            <label
-                                                                class="label py-0 cursor-pointer gap-2 justify-start">
-                                                                <input type="checkbox" v-model="entry.caseSensitive"
-                                                                    class="checkbox checkbox-xs checkbox-primary" />
-                                                                <span
-                                                                    class="label-text text-xs font-bold text-base-content/50">区分大小写</span>
-                                                            </label>
-                                                        </div>
-                                                        <div class="form-control">
-                                                            <label
-                                                                class="label py-0 cursor-pointer gap-2 justify-start">
                                                                 <input type="checkbox" v-model="entry.useProbability"
                                                                     class="checkbox checkbox-xs checkbox-primary" />
                                                                 <span
@@ -1116,18 +1096,6 @@
                                                             <input type="number" v-model.number="entry.scanDepth"
                                                                 class="input input-bordered input-xs w-full" />
                                                         </div>
-                                                    </div>
-                                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                                                        <label class="label py-0 cursor-pointer gap-2 justify-start">
-                                                            <input type="checkbox" v-model="entry.preventRecursion"
-                                                                class="checkbox checkbox-xs checkbox-primary" />
-                                                            <span class="label-text text-xs font-bold text-base-content/50">阻止后续递归</span>
-                                                        </label>
-                                                        <label class="label py-0 cursor-pointer gap-2 justify-start">
-                                                            <input type="checkbox" v-model="entry.delayUntilRecursion"
-                                                                class="checkbox checkbox-xs checkbox-primary" />
-                                                            <span class="label-text text-xs font-bold text-base-content/50">仅递归触发</span>
-                                                        </label>
                                                     </div>
                                                 </div>
 
@@ -1273,13 +1241,15 @@
                                                         </label>
                                                         <label class="label py-0 cursor-pointer gap-2 justify-start">
                                                             <input type="checkbox" v-model="script.markdownOnly"
+                                                                @change="$event.target.checked && (script.promptOnly = false)"
                                                                 class="checkbox checkbox-xs checkbox-primary" />
-                                                            <span class="label-text text-xs font-bold text-base-content/50">仅 Markdown</span>
+                                                            <span class="label-text text-xs font-bold text-base-content/50">仅用户可见</span>
                                                         </label>
                                                         <label class="label py-0 cursor-pointer gap-2 justify-start">
                                                             <input type="checkbox" v-model="script.promptOnly"
+                                                                @change="$event.target.checked && (script.markdownOnly = false)"
                                                                 class="checkbox checkbox-xs checkbox-primary" />
-                                                            <span class="label-text text-xs font-bold text-base-content/50">仅 Prompt</span>
+                                                            <span class="label-text text-xs font-bold text-base-content/50">仅AI可见</span>
                                                         </label>
                                                     </div>
                                                     <div class="flex gap-3 items-center pt-2">
@@ -2149,7 +2119,6 @@
                     const enabled = merged.enabled !== undefined
                         ? toBoolean(merged.enabled, true)
                         : !toBoolean(getValue(merged, ['disable', 'disabled'], false), false);
-
                     return {
                         comment: getValue(merged, ['comment', 'name'], ''),
                         name: getValue(merged, ['name', 'comment'], ''),
@@ -2159,17 +2128,12 @@
                         enabled,
                         constant: toBoolean(getValue(merged, ['constant'], false), false),
                         useRegex: toBoolean(getValue(merged, ['useRegex', 'use_regex'], false), false),
-                        matchWholeWords: toBoolean(getValue(merged, ['matchWholeWords', 'match_whole_words'], true), true),
-                        caseSensitive: toBoolean(getValue(merged, ['caseSensitive', 'case_sensitive'], false), false),
                         position: normalizeWorldPosition(getValue(merged, ['position'], 'at_depth')),
                         order: toNumber(getValue(merged, ['order', 'insertion_order'], 100), 100),
                         depth: toNumber(getValue(merged, ['depth'], 4), 4),
                         scanDepth: toNumber(getValue(merged, ['scanDepth', 'scan_depth'], 2), 2),
                         probability: toNumber(getValue(merged, ['probability'], 100), 100),
-                        useProbability: toBoolean(getValue(merged, ['useProbability', 'use_probability'], true), true),
-                        excludeRecursion: toBoolean(getValue(merged, ['excludeRecursion', 'exclude_recursion'], false), false),
-                        preventRecursion: toBoolean(getValue(merged, ['preventRecursion', 'prevent_recursion'], false), false),
-                        delayUntilRecursion: toBoolean(getValue(merged, ['delayUntilRecursion', 'delay_until_recursion'], false), false)
+                        useProbability: toBoolean(getValue(merged, ['useProbability', 'use_probability'], true), true)
                     };
                 };
 
@@ -2194,6 +2158,8 @@
                     const flags = getValue(script, ['flags', 'regexFlags'], parsed.flags || 'g') || parsed.flags || 'g';
                     let placement = Array.isArray(script.placement) ? script.placement.map(Number).filter(v => v === 1 || v === 2) : [1, 2];
                     if (placement.length === 0) placement = [2];
+                    const markdownOnly = toBoolean(script.markdownOnly, false);
+                    const promptOnly = markdownOnly ? false : toBoolean(script.promptOnly, false);
 
                     return {
                         name: getValue(script, ['name', 'scriptName'], '新建脚本'),
@@ -2202,8 +2168,8 @@
                         replacement: script.hasOwnProperty('replacement') ? script.replacement : getValue(script, ['replaceString'], ''),
                         placement,
                         enabled: script.enabled !== undefined ? toBoolean(script.enabled, true) : !toBoolean(script.disabled, false),
-                        markdownOnly: toBoolean(script.markdownOnly, false),
-                        promptOnly: toBoolean(script.promptOnly, false),
+                        markdownOnly,
+                        promptOnly,
                         minDepth: toNumber(script.minDepth, null),
                         maxDepth: toNumber(script.maxDepth, null)
                     };
@@ -3522,7 +3488,8 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
        - 必须生成一套“阅读卡片式正文美化”正则，而不是只做简单改色。效果类型参考：柔和信纸、档案页、手帐便签、病历/报告、暗黑契约、科幻终端、旧日书页、雨夜短信、童话绘本等。请根据当前角色的气质、时代、职业、关系张力和世界观自动选择主题；禁止固定复刻某一种金色样式。
        - 美化应服务于阅读体验：正文像一个完整的沉浸式面板，心理活动像独立的内心便签或引用卡，对话像精致引语，角色名、{{user}}、关键物件像柔和标签。不要生成顶部状态栏、下载按钮、关闭按钮等应用外壳控件。
        - 所有 replacement 必须是单行 HTML 字符串，优先使用内联 CSS；禁止远程图片、外链字体、script、position: fixed、遮挡正文的浮层。所有双引号必须在 JSON 字符串中正确转义，或在 HTML 属性中改用单引号。
-       - 每个脚本建议：enabled=true，markdownOnly=true，promptOnly=false，placement=[2]，flags="g"。
+       - 每个脚本建议：enabled=true，markdownOnly=true（仅用户可见），promptOnly=false，placement=[2]，flags="g"。
+       - markdownOnly 与 promptOnly 互斥，绝不能同时为 true。
        - 脚本组合必须至少包含：
          1. "正文阅读面板"：数组第一位，regex 字段写 \`^([\\s\\S]+)$\`，把整段正文包裹进一个响应式 \`div\`。容器需包含主题背景、细边框/侧边强调线、柔和阴影、充足 padding、合理行高、\`white-space: pre-wrap;\`、\`overflow-wrap: anywhere;\`、\`max-width: 100%;\`、\`margin: 0;\`，且不能依赖图片背景。
          2. "心理独白卡"：匹配 \`（([^）]*?)）\`，生成块级便签/引用样式，例如左侧竖线、淡背景、轻微内阴影、小图形点缀或 quote 标记，呈现内敛的心理独白感。
@@ -3532,6 +3499,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
     
     **世界书 (World Info) 生成规范**：
     - **样式规范与心理对话格式（必填 & 常驻）**：必须包含一条名为 "样式规范" 的常驻条目（Position=after_char）。内容需明确指示：“在回复中必须包含丰富细腻的心理活动或心理对话，且心理活动必须使用圆括号（）包裹，说出口的对话请使用『』包裹。请严格遵守此格式输出，以便系统进行高亮渲染。”
+    - constant=true 表示不依赖关键词触发，启用后始终插入；useProbability 只影响非 常驻 条目的关键词/正则触发。
     - **重要提示**：在 JSON 内容中，如果涉及到双引号（"），**必须**使用反斜杠进行转义（如：\\"），否则会导致系统解析失败。
     - **世界观设定**：必须包含一条名为“世界观”的详细条目（内容最少1000字），必须详尽详细描述世界背景、社会结构等，为 AI 的自由发挥提供坚实基础。
     - **角色设定**：必须包含名为“XX的设定”的详细条目，详细描述某个对应角色具体设定，为 AI 的自由发挥提供坚实基础，多个角色可拥有多世界书条目。
@@ -3961,9 +3929,9 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                 const isPlainJsonObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
                 const looseJsonObjectKeys = [
-                    'keys', 'comment', 'name', 'content', 'enabled', 'constant', 'useRegex', 'caseSensitive',
-                    'matchWholeWords', 'order', 'position', 'depth', 'scanDepth', 'probability', 'useProbability',
-                    'excludeRecursion', 'preventRecursion', 'delayUntilRecursion', 'regex', 'flags', 'replacement',
+                    'keys', 'comment', 'name', 'content', 'enabled', 'constant', 'useRegex',
+                    'order', 'position', 'depth', 'scanDepth', 'probability', 'useProbability',
+                    'regex', 'flags', 'replacement',
                     'placement', 'markdownOnly', 'promptOnly', 'minDepth', 'maxDepth', 'disabled', 'id', 'scope',
                     'htmlTemplate', 'initialVariableState', 'variableState', 'variableSchema', 'updateMode'
                 ];
@@ -4502,13 +4470,26 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
                     console.log('%c[Workshop Image Request]', 'color: #ec4899; font-weight: bold;', { style: options.avatarStyle, tag: tag });
                     const tokenParam = options.imageGenKey.trim();
                     const defaultArtists = '[[[artist:dishwasher1910]]], {{yd_(orange_maru)}}, [artist:ciloranko], [artist:sho_(sho_lwlw)], [ningen mame], year 2024,';
+                    const comicDoujinArtists = `(masterpiece:1.3), (best quality:1.2), (highres), (absurdres),
+(extremely detailed illustration:1.2), (anime style:1.1),
+
+(artist:feipin zhanshi:1.0), (artist:nlebo-hentai:0.9), (artist:sos adult:0.85),
+(artist:hews:0.4),
+
+(detailed skin texture:1.15), (glossy skin:1.1),
+(thick lineart:1.1), (high contrast:1.15),
+(vivid colors:1.1), (detailed shading:1.15),
+(warm color palette:1.05),
+(cute face:1.1), (detailed eyes:1.15), (detailed face:1.1),`;
                     const r18Artists = "0.9::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
                     const lolita25dArtists = "0.9::misaka_12003-gou & dino, rurudo,  mignon,wanke & liduk::, year 2025, realistic, 4k, -2::green ::, textless version, The image is highly intricate finished drawn. Only the character's face is in anime style, but their body is in realistic style. 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::. 1.63::photorealistic::, 1.63::photo(medium)::, \\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,, very aesthetic, masterpiece, no text,";
                     const animeArtists = '1.4::asanagi::,{{{{{artist:asanagi}}}}},1.2::xiaoluo_xl::,1.3::Artist: misaka_12003-gou::,1.2::Artist:shexyo::,0.7::Artist:b.sa_(bbbs)::,1::Artist:qiandaiyiyu::,1.05::artist:natedecock::,1.05::artist:kunaboto::,0.75::artist:kandata_nijou::,1.05::artist:zer0.zer0 ::,1.05::artist:jasony::,0.75::misaka_12003-gou ::, dino_(dinoartforame), wanke, liduke, year 2025, realistic, 4k, -2::green ::, {textless version, The image is highly intricate finished drawn,write realistically,true to life}, 1.35::A highly finished photo-style artwork that has lively color, graphic texture, realistic skin surface, and lifelike flesh with little obliques::, 1.63::photorealistic::,3::age slider::,1.63::photo(medium)::, 2::best quality, absurdres, very aesthetic, detailed, masterpiece::,-4::Muscle definition, abs::';
                     const galgameArtists = 'artist:ningen_mame,, noyu_(noyu23386566),, toosaka asagi,, location,\\n20::best quality, absurdres, very aesthetic, detailed, masterpiece::,:,, very aesthetic, masterpiece, no text,';
 
                     let targetArtists = defaultArtists;
-                    if (options.avatarStyle === 'hentai') {
+                    if (options.avatarStyle === 'comicDoujin') {
+                        targetArtists = comicDoujinArtists;
+                    } else if (options.avatarStyle === 'hentai') {
                         targetArtists = r18Artists;
                     } else if (options.avatarStyle === 'lolita25d') {
                         targetArtists = lolita25dArtists;
@@ -4612,7 +4593,7 @@ ${uiTemplatePrompt.value.trim() || '根据当前角色自动设计一个状态�
 ### Creator Notes
 (作者注释，必填，使用简单的#+关键词的标签形式说明人物卡的内容，每个关键词之间隔一个空格，例如#纯爱 #校园，如有大量色情内容请在最前面添加#R18标签，如没有过多关于性或者色情的内容请不要随意添加#R18标签)
 ### Avatar Prompt（前面的内容结束后）
-(头像提示词，请使用英文描写，格式必须为: <image>image###生成的提示词###</image> ，仅一段符合角色卡的生图提示词，novelai格式，有nsfw内容请添加nsfw标签)
+(头像提示词，请使用英文描写，格式必须为: <image>image###生成的提示词###</image> ，仅一段符合角色卡的生图提示词，novelai格式；如果是同人/已有作品角色，生成的提示词最前面必须先写官方英文名或常用角色Tag，再写外貌、服装、动作等Tag；有nsfw内容请添加nsfw标签，若同时是同人角色，角色名放第一位，nsfw紧跟其后)
 ${options.generateExtra ? `### World Info
 (世界书条目，用来加强设定，补充详细内容，规范UI内容，增强AI记忆能力，必须是合法的 JSON 数组格式，应根据角色卡复杂程度决定条目数量的多少。包含字段：
 - keys (字符串数组): 触发词
@@ -4620,7 +4601,6 @@ ${options.generateExtra ? `### World Info
 - comment (字符串): (简略易懂的描述，中文，作为条目的标识)
 - constant (布尔): 是否常驻
 - useRegex (布尔): 是否使用正则匹配关键词
-- caseSensitive (布尔): 是否区分大小写
 - position (字符串): 插入位置，必须是以下规范的值之一（按适用场景选择）：
   - "before_char": 适合在角色详情前补充的前置世界背景。
   - "after_char": 适合在角色详情后的设定补充、或定义格式（如：强制规定必须写心理描写的样式规范）。
@@ -4631,13 +4611,9 @@ ${options.generateExtra ? `### World Info
   - "assistant_top": 适合强加给AI的行为指导或短期内心引导。
 - order (数字，1-99): 插入顺序，数字不允许重复，多个条目应确保使用不同的插入顺序
 - probability (数字 0-100): 触发概率
-- useProbability (布尔): 是否启用概率
-- depth (数字): 扫描深度 (仅当 position 为 "at_depth" 时有效，建议值为0-4)
-- scanDepth (数字): 触发扫描深度
-- excludeRecursion (布尔): 是否排除递归
-- preventRecursion (布尔): 是否阻止后续递归
-- delayUntilRecursion (布尔): 是否仅在递归扫描时触发
-- matchWholeWords (布尔): 是否全词匹配
+- useProbability (布尔): 是否启用概率；只影响非 常驻 条目的关键词/正则触发
+- depth (数字): 插入深度，仅当 position 为 "at_depth" 时有效，建议值为0-4
+- scanDepth (数字): 关键词触发时向上扫描的对话深度
 )
 ### Regex Scripts
 (正则脚本，必须生成，用于美化输出或处理特定逻辑，必须是合法的 JSON 数组格式。包含字段：
@@ -4647,8 +4623,8 @@ ${options.generateExtra ? `### World Info
 - replacement (字符串): 替换内容
 - placement (数字数组 [1,2]): 1=User, 2=AI
 - enabled (布尔): 是否启用
-- markdownOnly (布尔): 仅在Markdown渲染时生效
-- promptOnly (布尔): 仅在发送给AI的Prompt中生效
+- markdownOnly (布尔): 仅用户可见，只在界面显示时生效
+- promptOnly (布尔): 仅AI可见，只在发送给AI的完整上下文中生效；markdownOnly 与 promptOnly 不能同时为 true
 - minDepth (数字或null): 最小生效深度
 - maxDepth (数字或null): 最大生效深度
 )
@@ -4657,7 +4633,8 @@ ${options.generateExtra ? `### World Info
    - 必须生成一套“阅读卡片式正文美化”正则，而不是只做简单改色。效果类型参考：柔和信纸、档案页、手帐便签、病历/报告、暗黑契约、科幻终端、旧日书页、雨夜短信、童话绘本等。请根据当前角色的气质、时代、职业、关系张力和世界观自动选择主题；禁止固定复刻某一种金色样式。
    - 美化应服务于阅读体验：正文像一个完整的沉浸式面板，心理活动像独立的内心便签或引用卡，对话像精致引语，角色名、{{user}}、关键物件像柔和标签。不要生成顶部状态栏、下载按钮、关闭按钮等应用外壳控件。
    - 所有 replacement 必须是单行 HTML 字符串，优先使用内联 CSS；禁止远程图片、外链字体、script、position: fixed、遮挡正文的浮层。所有双引号必须在 JSON 字符串中正确转义，或在 HTML 属性中改用单引号。
-   - 每个脚本建议：enabled=true，markdownOnly=true，promptOnly=false，placement=[2]，flags="g"。
+   - 每个脚本建议：enabled=true，markdownOnly=true（仅用户可见），promptOnly=false，placement=[2]，flags="g"。
+   - markdownOnly 与 promptOnly 互斥，绝不能同时为 true。
    - 脚本组合必须至少包含：
      1. "正文阅读面板"：数组第一位，regex 字段写 \`^([\\s\\S]+)$\`，把整段正文包裹进一个响应式 \`div\`。容器需包含主题背景、细边框/侧边强调线、柔和阴影、充足 padding、合理行高、\`white-space: pre-wrap;\`、\`overflow-wrap: anywhere;\`、\`max-width: 100%;\`、\`margin: 0;\`，且不能依赖图片背景。
      2. "心理独白卡"：匹配 \`（([^）]*?)）\`，生成块级便签/引用样式，例如左侧竖线、淡背景、轻微内阴影、小图形点缀或 quote 标记，呈现内敛的心理独白感。
@@ -4665,8 +4642,9 @@ ${options.generateExtra ? `### World Info
      4. "角色/用户/关键词标签"：为角色名、{{user}}、重要物件或特殊名词生成 2-5 个精致行内标签脚本，使用半透明底色、小圆角、轻边框或小色块，避免把普通高频字词全部高亮。
    - 颜色与排版必须随角色变化：温柔系可用奶油/浅金/粉白，冷淡系可用雾蓝/银灰，危险系可用酒红/黑金，科幻系可用青蓝/荧光线，古典系可用宣纸/墨色。不要让所有角色都长得一样。
 
-**世界书 (World Info) 生成规范**（所有条目禁止使用按深度）：
+**世界书 (World Info) 生成规范**（格式规范类常驻条目不要使用按深度）：
 - **样式规范与心理对话格式（必填 & 常驻）**：必须包含一条名为 "样式规范" 的常驻条目（Position=after_char）。内容需明确指示：“在回复中必须包含丰富细腻的心理活动或心理对话，且心理活动必须使用圆括号（）包裹，说出口的对话请使用『』包裹。请严格遵守此格式输出，以便系统进行高亮渲染。”
+- constant=true 表示不依赖关键词触发，启用后始终插入；useProbability 只影响非 常驻 条目的关键词/正则触发。
 - **重要提示**：在 JSON 内容中，如果涉及到双引号（"），**必须**使用反斜杠进行转义（如：\\"），否则会导致系统解析失败。
 - **世界观设定**：必须包含一条名为“世界观”的详细条目（内容最少1000字），必须详尽详细描述世界背景、社会结构等，为 AI 的自由发挥提供坚实基础。
 - **角色设定**：必须包含名为“XX的设定”的详细条目，详细描述某个对应角色具体设定，为 AI 的自由发挥提供坚实基础，多个角色可拥有多世界书条目。
