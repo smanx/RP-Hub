@@ -592,6 +592,7 @@ def main():
     shutil.copy2(script_dir / "index.html", build_dir / "index.html")
     shutil.copytree(script_dir / "character", build_dir / "character", dirs_exist_ok=True)
     shutil.copytree(script_dir / "assets", build_dir / "assets", dirs_exist_ok=True)
+    shutil.copy2(script_dir / "card-script.user.js", build_dir / "card-script.user.js")
     print_success("  ✓ 项目文件复制完成")
     
     print_info("替换域名...")
