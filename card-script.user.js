@@ -140,17 +140,24 @@
                         fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid)
                             .then(function(response) { return response.json(); })
                             .then(function(cardData) {
-                                // 从base64转换为File
                                 const avatarUrl = cardData.avatar_url;
-                                const base64Data = avatarUrl.split(',')[1];
-                                const mimeType = avatarUrl.split(';')[0].split(':')[1];
-                                const binaryString = atob(base64Data);
-                                const bytes = new Uint8Array(binaryString.length);
-                                for (let i = 0; i < binaryString.length; i++) {
-                                    bytes[i] = binaryString.charCodeAt(i);
+                                let filePromise;
+                                if (avatarUrl) {
+                                    const base64Data = avatarUrl.split(',')[1];
+                                    const mimeType = avatarUrl.split(';')[0].split(':')[1];
+                                    const binaryString = atob(base64Data);
+                                    const bytes = new Uint8Array(binaryString.length);
+                                    for (let i = 0; i < binaryString.length; i++) {
+                                        bytes[i] = binaryString.charCodeAt(i);
+                                    }
+                                    const blob = new Blob([bytes], { type: mimeType });
+                                    filePromise = Promise.resolve(new File([blob], uuid + '.png', { type: mimeType }));
+                                } else {
+                                    filePromise = fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid + '/download/file')
+                                        .then(function(res) { return res.blob(); })
+                                        .then(function(blob) { return new File([blob], uuid + '.png', { type: blob.type }); });
                                 }
-                                const blob = new Blob([bytes], { type: mimeType });
-                                const file = new File([blob], uuid + '.png', { type: mimeType });
+                                return filePromise.then(function(file) {
                                 
                                 const message = { type: 'action', data: { uuid: uuid, cardData: cardData, file: file } };
                                 console.log('postMessage参数:', message);
@@ -169,6 +176,7 @@
                                     cardButton.style.background = 'rgba(255, 255, 255, 0.95)';
                                     cardButton.style.borderColor = '#667eea';
                                 }, 2000);
+                            });
                             })
                             .catch(function(error) {
                                 console.error('获取角色数据失败:', error);
