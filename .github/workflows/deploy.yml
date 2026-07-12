@@ -57,6 +57,18 @@ jobs:
         run: |
           python build.py
 
+      - name: Upload to build branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan build
+          git reset --hard
+          rm -f .gitattributes
+          cp -r build/* .
+          git add .
+          git commit -m "Deploy build from ${{ github.sha }}" || true
+          git push origin build --force
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
