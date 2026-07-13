@@ -739,6 +739,8 @@ def main():
         "https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js": f"./assets/libs/{resource_map['Sortable.min.js']}",
         "assets/js/app.js": f"./assets/js/{resource_map['app.js']}",
         "assets/js/utils.js": f"./assets/js/{resource_map['utils.js']}",
+        "assets/js/card-utils.js": f"./assets/js/{resource_map['card-utils.js']}",
+        "assets/js/ui-select.js": f"./assets/js/{resource_map['ui-select.js']}",
         "assets/css/styles.css": f"./assets/css/{resource_map['styles.css']}",
     }
     replace_in_file(str(index_html_path), replacements)
