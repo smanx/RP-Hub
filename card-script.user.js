@@ -136,28 +136,12 @@
                         cardButton.style.animation = 'spin 1s linear infinite';
                         cardButton.innerHTML = '<svg style="width: 18px; height: 18px; fill: none; stroke: white; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><circle cx="9" cy="9" r="7" opacity="0.25"></circle><path d="M16 9a7 7 0 0 0-7-7" opacity="0.75"></path></svg>';
                         
-                        // 获取角色数据
-                        fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid)
-                            .then(function(response) { return response.json(); })
-                            .then(function(cardData) {
-                                const avatarUrl = cardData.avatar_url;
-                                let filePromise;
-                                if (avatarUrl) {
-                                    const base64Data = avatarUrl.split(',')[1];
-                                    const mimeType = avatarUrl.split(';')[0].split(':')[1];
-                                    const binaryString = atob(base64Data);
-                                    const bytes = new Uint8Array(binaryString.length);
-                                    for (let i = 0; i < binaryString.length; i++) {
-                                        bytes[i] = binaryString.charCodeAt(i);
-                                    }
-                                    const blob = new Blob([bytes], { type: mimeType });
-                                    filePromise = Promise.resolve(new File([blob], uuid + '.png', { type: mimeType }));
-                                } else {
-                                    filePromise = fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid + '/download/file')
-                                        .then(function(res) { return res.blob(); })
-                                        .then(function(blob) { return new File([blob], uuid + '.png', { type: blob.type }); });
-                                }
-                                return filePromise.then(function(file) {
+                        // 获取角色数据 - 直接下载文件
+                        const cardData = {};
+                        fetch('https://proxy.smanx.xx.kg/https://rphforum.zeabur.app/api/cards/' + uuid + '/download/file')
+                            .then(function(res) { return res.blob(); })
+                            .then(function(blob) {
+                                const file = new File([blob], uuid + '.png', { type: blob.type });
                                 
                                 const message = { type: 'action', data: { uuid: uuid, cardData: cardData, file: file } };
                                 console.log('postMessage参数:', message);
@@ -176,7 +160,6 @@
                                     cardButton.style.background = 'rgba(255, 255, 255, 0.95)';
                                     cardButton.style.borderColor = '#667eea';
                                 }, 2000);
-                            });
                             })
                             .catch(function(error) {
                                 console.error('获取角色数据失败:', error);
