@@ -702,6 +702,8 @@ def main():
         (build_dir / "assets" / "css" / "styles.css", "styles.css"),
         (build_dir / "assets" / "js" / "app.js", "app.js"),
         (build_dir / "assets" / "js" / "utils.js", "utils.js"),
+        (build_dir / "assets" / "js" / "card-utils.js", "card-utils.js"),
+        (build_dir / "assets" / "js" / "ui-select.js", "ui-select.js"),
     ]
     
     for file_path, filename in local_files:
@@ -763,6 +765,8 @@ def main():
         "https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css": f"../assets/libs/{resource_map['daisyui.min.css']}",
         "https://unpkg.com/vue@3/dist/vue.global.prod.js": f"../assets/libs/{resource_map['vue.global.prod.js']}",
         "https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js": f"../assets/libs/{resource_map['localforage.min.js']}",
+        "../assets/js/card-utils.js": f"../assets/js/{resource_map['card-utils.js']}",
+        "../assets/js/ui-select.js": f"../assets/js/{resource_map['ui-select.js']}",
     }
     replace_in_file(str(char_html_path), char_replacements)
     print_success("  ✓ character/index.html 处理完成")
@@ -774,6 +778,8 @@ def main():
         f"./assets/css/{resource_map['styles.css']}",
         f"./assets/js/{resource_map['app.js']}",
         f"./assets/js/{resource_map['utils.js']}",
+        f"./assets/js/{resource_map['card-utils.js']}",
+        f"./assets/js/{resource_map['ui-select.js']}",
         f"./assets/libs/{resource_map['tailwindcss.js']}",
         f"./assets/libs/{resource_map['vue.global.prod.js']}",
         f"./assets/libs/{resource_map['marked.min.js']}",
