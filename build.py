@@ -102,6 +102,22 @@ def replace_in_file(file_path: str, replacements: dict) -> None:
         f.write(content)
 
 
+def _replace_safe(file_path: str, replacements: dict) -> None:
+    """安全替换，失败时只打警告不中断构建"""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    modified = False
+    for old_str, new_str in replacements.items():
+        if old_str in content:
+            content = content.replace(old_str, new_str)
+            modified = True
+        else:
+            print_warning(f"    ⚠ 替换模式未匹配: {old_str[:60]}... (继续构建)")
+    if modified:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+
 def replace_domain_in_files(directory: Path, old_domain: str, new_domain: str) -> None:
     """递归替换目录中所有文件的域名"""
     file_extensions = ['.html', '.css', '.js', '.json', '.md', '.txt']
@@ -610,6 +626,13 @@ def main():
         '                    // Auto-select the new character without entering chat.\n                    const newCharacterIndex = characters.value.length - 1;\n                    showAddCharacterMenu.value = false;\n                    currentCharacterIndex.value = newCharacterIndex;\n                    saveData();\n                    showToast(\'角色卡导入完成\', \'success\');'
     })
     print_success("  ✓ 导入跳转逻辑已移除")
+    
+    print_info("清理历史消息残留的 UI 模板，仅最后一轮渲染...")
+    _replace_safe(str(app_js_path), {
+        '            if (!targetMessage) return false;\n            const top = activeUiTemplates.value\n                .filter(template => template.placement === \'top\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            const bottom = activeUiTemplates.value\n                .filter(template => template.placement === \'bottom\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            targetMessage.uiTemplateBlocks = {':
+        '            if (!targetMessage) return false;\n            chatHistory.value.forEach(function(msg) {\n                if (msg && msg.role === \'assistant\' && msg !== targetMessage) {\n                    delete msg.uiTemplateBlocks;\n                }\n            });\n            const top = activeUiTemplates.value\n                .filter(template => template.placement === \'top\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            const bottom = activeUiTemplates.value\n                .filter(template => template.placement === \'bottom\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            targetMessage.uiTemplateBlocks = {'
+    })
+    print_success("  ✓ UI 模板清理逻辑已注入")
     
     files_to_download = [
         (
