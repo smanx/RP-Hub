@@ -604,6 +604,13 @@ def main():
     app_js_path = build_dir / "assets" / "js" / "app.js"
     inject_vue_app_expose(str(app_js_path))
     
+    print_info("移除导入后自动跳转到对话页面的逻辑...")
+    replace_in_file(str(app_js_path), {
+        '                    // Auto-select the new character and enter chat immediately.\n                    const newCharacterIndex = characters.value.length - 1;\n                    showAddCharacterMenu.value = false;\n                    await selectCharacter(newCharacterIndex, true);':
+        '                    // Auto-select the new character without entering chat.\n                    const newCharacterIndex = characters.value.length - 1;\n                    showAddCharacterMenu.value = false;\n                    currentCharacterIndex.value = newCharacterIndex;\n                    saveData();\n                    showToast(\'角色卡导入完成\', \'success\');'
+    })
+    print_success("  ✓ 导入跳转逻辑已移除")
+    
     files_to_download = [
         (
             [
