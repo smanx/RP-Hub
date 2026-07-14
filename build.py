@@ -91,19 +91,7 @@ def download_file(urls: list, dest_path: str, name: str) -> str:
 
 
 def replace_in_file(file_path: str, replacements: dict) -> None:
-    """替换文件中的内容"""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    for old_str, new_str in replacements.items():
-        content = content.replace(old_str, new_str)
-    
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(content)
-
-
-def _replace_safe(file_path: str, replacements: dict) -> None:
-    """安全替换，失败时只打警告不中断构建"""
+    """替换文件中的内容，模式未匹配时只打警告不中断构建"""
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
     modified = False
@@ -112,7 +100,7 @@ def _replace_safe(file_path: str, replacements: dict) -> None:
             content = content.replace(old_str, new_str)
             modified = True
         else:
-            print_warning(f"    ⚠ 替换模式未匹配: {old_str[:60]}... (继续构建)")
+            print_warning(f"    ⚠ 替换模式未匹配，跳过: {old_str[:60]}...")
     if modified:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -507,10 +495,13 @@ def inject_vue_app_expose(app_js_path: str) -> None:
             original_pattern, 
             "}); window.__VUE_APP__ = app.mount('#app');"
         )
-        modified_content = modified_content.replace(
-            "createApp({", 
-            "var app = createApp({"
-        )
+        if "createApp({" in modified_content:
+            modified_content = modified_content.replace(
+                "createApp({", 
+                "var app = createApp({"
+            )
+        else:
+            print_warning("  ⚠ 未找到 createApp({，跳过 var app 注入，使用降级模式")
         with open(app_js_path, 'w', encoding='utf-8') as f:
             f.write(modified_content)
         print_success("  ✓ Vue app 实例暴露代码注入成功")
@@ -628,7 +619,7 @@ def main():
     print_success("  ✓ 导入跳转逻辑已移除")
     
     print_info("清理历史消息残留的 UI 模板，仅最后一轮渲染...")
-    _replace_safe(str(app_js_path), {
+    replace_in_file(str(app_js_path), {
         '            if (!targetMessage) return false;\n            const top = activeUiTemplates.value\n                .filter(template => template.placement === \'top\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            const bottom = activeUiTemplates.value\n                .filter(template => template.placement === \'bottom\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            targetMessage.uiTemplateBlocks = {':
         '            if (!targetMessage) return false;\n            chatHistory.value.forEach(function(msg) {\n                if (msg && msg.role === \'assistant\' && msg !== targetMessage) {\n                    delete msg.uiTemplateBlocks;\n                }\n            });\n            const top = activeUiTemplates.value\n                .filter(template => template.placement === \'top\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            const bottom = activeUiTemplates.value\n                .filter(template => template.placement === \'bottom\' && !excludeTemplateIds.has(template.id))\n                .map(renderUiTemplateHtml)\n                .filter(Boolean);\n            targetMessage.uiTemplateBlocks = {'
     })
@@ -779,10 +770,16 @@ def main():
         content = f.read()
     
     pwa_tags = f'<link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#1f2937"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="./assets/{resource_map["icon.svg"]}">'
-    content = content.replace("</title>", f"</title>{pwa_tags}")
+    if "</title>" in content:
+        content = content.replace("</title>", f"</title>{pwa_tags}")
+    else:
+        print_warning("  ⚠ 未找到 </title>，跳过 PWA 标签注入")
     
     sw_register = generate_update_checker(version)
-    content = content.replace("</body>", sw_register + "</body>")
+    if "</body>" in content:
+        content = content.replace("</body>", sw_register + "</body>")
+    else:
+        print_warning("  ⚠ 未找到 </body>，跳过更新检测脚本注入")
     
     with open(index_html_path, 'w', encoding='utf-8') as f:
         f.write(content)
