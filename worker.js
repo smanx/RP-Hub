@@ -4,7 +4,7 @@
 const DEFAULT_TARGET_DOMAIN = 'https://rphforum.zeabur.app'
 const INJECT_SCRIPT = true
 // 环境变量REMOTE_JS_URL会覆盖这个默认值
-const DEFAULT_REMOTE_JS_URL = "https://rp-hub.netlify.app/card-script.user.js"
+const DEFAULT_REMOTE_JS_URL = ""
 // ==============================================
 
 export default {
