@@ -26,6 +26,11 @@
     --warn: #ffb454;
     --err: #ff6b6b;
     --ok: #7ee787;
+    --png: #6bb8ff;
+    --png-soft: rgba(107, 184, 255, 0.12);
+    --json: #c4a3ff;
+    --json-soft: rgba(196, 163, 255, 0.12);
+    --dir: #f0c674;
     --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.35);
     --radius: 14px;
   }
@@ -51,7 +56,7 @@
   /* Layout */
   .app {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 360px 1fr;
     grid-template-rows: 60px 1fr;
     height: 100vh;
   }
@@ -100,7 +105,6 @@
     min-width: 0;
   }
   .path .label { color: var(--ink-3); margin-right: 8px; }
-  .path .val { color: var(--ink-1); }
   .path .empty { color: var(--ink-3); font-style: italic; }
 
   button.btn {
@@ -130,6 +134,12 @@
   button.btn.primary:hover { background: #e3ff7a; border-color: #e3ff7a; }
   button.btn.ghost { background: transparent; border-color: var(--line-soft); color: var(--ink-1); }
   button.btn.ghost:hover { background: var(--bg-2); color: var(--ink-0); }
+  button.btn.png-btn {
+    background: var(--png-soft);
+    color: var(--png);
+    border-color: rgba(107, 184, 255, 0.3);
+  }
+  button.btn.png-btn:hover { background: rgba(107, 184, 255, 0.2); border-color: var(--png); }
   button.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   button.btn .icon { width: 14px; height: 14px; }
 
@@ -157,56 +167,83 @@
     font-size: 11px;
     color: var(--ink-3);
   }
-  .list {
+  .count .c-png { color: var(--png); }
+  .count .c-json { color: var(--json); }
+  .count .c-dir { color: var(--dir); }
+
+  .tree {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 6px 8px 16px;
+    font-size: 13px;
   }
-  .card-item {
-    padding: 12px 14px;
-    border-radius: 10px;
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px 5px 4px;
+    border-radius: 6px;
     cursor: pointer;
-    margin-bottom: 4px;
-    border: 1px solid transparent;
-    transition: background 0.12s, border-color 0.12s, transform 0.12s;
+    user-select: none;
+    color: var(--ink-1);
+    transition: background 0.1s;
+    position: relative;
   }
-  .card-item:hover { background: var(--bg-2); }
-  .card-item.active {
-    background: var(--bg-3);
-    border-color: var(--line);
+  .tree-row:hover { background: var(--bg-2); }
+  .tree-row.active { background: var(--bg-3); }
+  .tree-row .caret {
+    width: 14px; height: 14px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+    transition: transform 0.15s;
   }
-  .card-item .name {
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--ink-0);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    margin-bottom: 4px;
+  .tree-row.dir.expanded .caret { transform: rotate(90deg); color: var(--ink-1); }
+  .tree-row .caret.spacer { visibility: hidden; }
+  .tree-row .ico {
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
-  .card-item .meta {
-    display: flex; align-items: center; gap: 8px;
+  .tree-row .ico svg { width: 14px; height: 14px; }
+  .tree-row .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  .tree-row .badge {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--ink-2);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
   }
-  .badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
-  .badge.ok { background: rgba(126, 231, 135, 0.12); color: var(--ok); }
-  .badge.warn { background: rgba(255, 180, 84, 0.12); color: var(--warn); }
-  .badge.err { background: rgba(255, 107, 107, 0.12); color: var(--err); }
-  .badge.muted { background: var(--bg-3); color: var(--ink-2); }
-  .empty-state {
+  .tree-row.png .ico { color: var(--png); }
+  .tree-row.png .name { color: var(--ink-0); }
+  .tree-row.png .badge { background: var(--png-soft); color: var(--png); }
+  .tree-row.json .ico { color: var(--json); }
+  .tree-row.json .name { color: var(--ink-0); }
+  .tree-row.json .badge { background: var(--json-soft); color: var(--json); }
+  .tree-row.other { cursor: not-allowed; opacity: 0.55; }
+  .tree-row.other .ico { color: var(--ink-3); }
+
+  .tree-children { display: none; }
+  .tree-children.show { display: block; }
+  .tree-loading, .tree-empty {
     padding: 32px 16px;
     text-align: center;
     color: var(--ink-2);
     font-size: 13px;
   }
-  .empty-state .ico { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+  .tree-loading .ico, .tree-empty .ico { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
 
   /* Main */
   main.workspace {
@@ -232,13 +269,15 @@
     margin: 0;
     letter-spacing: -0.01em;
   }
-  .ws-empty p { margin: 0; max-width: 440px; text-align: center; }
+  .ws-empty p { margin: 0; max-width: 480px; text-align: center; }
   .ws-empty .features {
     display: flex; gap: 24px;
     margin-top: 18px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     color: var(--ink-3);
+    flex-wrap: wrap;
+    justify-content: center;
   }
   .ws-empty .features span { display: flex; align-items: center; gap: 6px; }
   .ws-empty .features span::before {
@@ -250,6 +289,9 @@
     display: grid;
     grid-template-columns: minmax(280px, 380px) 1fr;
     overflow: hidden;
+  }
+  .ws-loaded.full {
+    grid-template-columns: 1fr;
   }
   .preview {
     border-right: 1px solid var(--line-soft);
@@ -303,7 +345,6 @@
   .meta-row + .meta-row { border-top: 1px dashed var(--line-soft); }
   .meta-row .k { color: var(--ink-2); }
   .meta-row .v { color: var(--ink-0); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-  .meta-row .v.mono-w { word-break: break-all; text-align: right; max-width: 60%; }
 
   .editor {
     display: flex;
@@ -325,10 +366,9 @@
     color: var(--ink-1);
     min-width: 0;
   }
-  .editor-title .file-ico {
-    color: var(--accent);
-    font-weight: 600;
-  }
+  .editor-title .file-ico { font-weight: 600; }
+  .editor-title.png .file-ico { color: var(--png); }
+  .editor-title.json .file-ico { color: var(--json); }
   .editor-title .fname {
     color: var(--ink-0);
     font-weight: 500;
@@ -410,6 +450,9 @@
     background: var(--bg-2); padding: 2px 6px; border-radius: 4px; font-size: 12px;
     color: var(--accent);
   }
+
+  /* hidden file input for import */
+  #import-file { display: none; }
 </style>
 </head>
 <body>
@@ -425,6 +468,10 @@
       <span class="label">root</span>
       <span class="empty" id="path-val">— 未选择目录 —</span>
     </div>
+    <button class="btn ghost" id="btn-collapse" disabled title="全部折叠">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      折叠
+    </button>
     <button class="btn ghost" id="btn-refresh" disabled>
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></svg>
       刷新
@@ -437,47 +484,54 @@
 
   <aside class="sidebar">
     <div class="side-head">
-      <div class="side-title">角色卡</div>
+      <div class="side-title">文件浏览器</div>
       <div class="count" id="count">0</div>
     </div>
-    <div class="list" id="list">
-      <div class="empty-state">
+    <div class="tree" id="tree">
+      <div class="tree-empty">
         <div class="ico">⊹</div>
-        <div>选择 <code style="color:var(--accent);background:var(--bg-2);padding:1px 6px;border-radius:4px;font-size:11px;">cards/</code> 目录以开始</div>
+        <div>选择目录以开始</div>
       </div>
     </div>
   </aside>
 
   <main class="workspace" id="workspace">
     <div class="ws-empty" id="ws-empty">
-      <h2>没有选中的角色卡</h2>
-      <p>从左侧列表中选择一张卡片，或在工具栏中打开 <code>cards/</code> 目录开始编辑。</p>
+      <h2>没有选中的文件</h2>
+      <p>从左侧树形列表中选择一个 <code style="color:var(--png);background:var(--png-soft);padding:1px 6px;border-radius:4px;font-size:11px;">PNG</code> 或 <code style="color:var(--json);background:var(--json-soft);padding:1px 6px;border-radius:4px;font-size:11px;">JSON</code> 文件开始编辑。</p>
       <div class="features">
-        <span>编辑 JSON</span>
-        <span>预览 PNG</span>
-        <span>一键回写</span>
+        <span>树形浏览</span>
+        <span>PNG: 解析 tEXt</span>
+        <span>PNG: 导出 JSON</span>
+        <span>PNG: 导入 JSON 覆盖</span>
+        <span>JSON: 直接编辑</span>
       </div>
     </div>
   </main>
 </div>
 
+<input type="file" id="import-file" accept=".json,application/json" />
+
 <div class="toast" id="toast"></div>
 
 <script>
 /* ============================================================
- *  Card Marker Editor
- *  - File System Access API for direct read/write
- *  - Embedded PNG tEXt chunk read/write (Base64 + CRC32)
+ *  Card Marker Editor (Tree view)
+ *  - Browse all folders and files like a file manager
+ *  - Folders expand/collapse
+ *  - PNG and JSON files can be selected for editing
  * ============================================================ */
 
 const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
 
 const state = {
   dirHandle: null,
   dirName: '',
-  cards: [],          // [{ handle, name, jsonHandle, pngHandle, data, hasWatermark, fileSize }]
-  activeIndex: -1,
+  tree: null,            // { type:'root', handle, name:'', children: [...] }
+  expanded: new Set(),   // paths of expanded dirs
+  counts: { dir: 0, png: 0, json: 0, other: 0 },
+  activeFile: null,      // tree node (file) currently selected
+  loading: false,
   dirty: false,
   originalJson: '',
   saving: false,
@@ -486,15 +540,26 @@ const state = {
 const els = {
   pickBtn: $('#btn-pick'),
   refreshBtn: $('#btn-refresh'),
+  collapseBtn: $('#btn-collapse'),
   path: $('#path-val'),
-  list: $('#list'),
+  tree: $('#tree'),
   count: $('#count'),
   workspace: $('#workspace'),
   wsEmpty: $('#ws-empty'),
   toast: $('#toast'),
+  importFile: $('#import-file'),
 };
 
 const SUPPORTS_FSA = 'showDirectoryPicker' in window;
+
+const ICONS = {
+  folder: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>',
+  folderOpen: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" opacity="0.4"/><path d="M2 8h20l-2 10H4L2 8z" opacity="0.7"/></svg>',
+  png: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+  json: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H6a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h2"/><path d="M16 3h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-2"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  caret: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>',
+};
 
 /* ---------------- Toast ---------------- */
 let toastTimer = null;
@@ -505,12 +570,47 @@ function toast(msg, kind = 'ok', ms = 2400) {
   toastTimer = setTimeout(() => els.toast.classList.remove('show'), ms);
 }
 
+/* ---------------- Tree scan ---------------- */
+async function scanTree(dirHandle, basePath = '') {
+  const nodes = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (name.startsWith('.')) continue;
+    const path = basePath ? `${basePath}/${name}` : name;
+    if (handle.kind === 'directory') {
+      const children = await scanTree(handle, path);
+      nodes.push({
+        type: 'dir', name, path, handle, children, item: null,
+      });
+    } else {
+      const lower = name.toLowerCase();
+      const fileType = lower.endsWith('.png') ? 'png'
+                     : lower.endsWith('.json') ? 'json'
+                     : 'other';
+      nodes.push({
+        type: 'file', name, path, handle, fileType, item: null,
+      });
+    }
+  }
+  return nodes.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    return a.name.localeCompare(b.name, 'zh-CN');
+  });
+}
+
+function countTree(nodes, counts) {
+  for (const n of nodes) {
+    if (n.type === 'dir') {
+      counts.dir += 1;
+      countTree(n.children, counts);
+    } else if (n.fileType === 'png') counts.png += 1;
+    else if (n.fileType === 'json') counts.json += 1;
+    else counts.other += 1;
+  }
+}
+
 /* ---------------- File System Access API ---------------- */
 async function pickDirectory() {
-  if (!SUPPORTS_FSA) {
-    renderUnsupported();
-    return;
-  }
+  if (!SUPPORTS_FSA) { renderUnsupported(); return; }
   try {
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     state.dirHandle = handle;
@@ -518,8 +618,9 @@ async function pickDirectory() {
     els.path.textContent = handle.name;
     els.path.classList.remove('empty');
     els.refreshBtn.disabled = false;
-    await scanDirectory();
-    toast(`已加载 ${state.cards.length} 张卡片`, 'ok');
+    els.collapseBtn.disabled = false;
+    await scanAndBuild();
+    toast(`已加载：${state.counts.png} PNG · ${state.counts.json} JSON`, 'ok');
   } catch (e) {
     if (e.name !== 'AbortError') {
       console.error(e);
@@ -528,80 +629,176 @@ async function pickDirectory() {
   }
 }
 
-async function scanDirectory() {
-  state.cards = [];
-  state.activeIndex = -1;
-  els.list.innerHTML = '';
-  els.count.textContent = '…';
-
-  for await (const [name, handle] of state.dirHandle.entries()) {
-    if (handle.kind !== 'directory') continue;
-    if (name.startsWith('.')) continue;
-    try {
-      const card = await loadCardDir(handle, name);
-      if (card) state.cards.push(card);
-    } catch (e) {
-      console.warn('skip', name, e);
-    }
+async function scanAndBuild() {
+  els.tree.innerHTML = '<div class="tree-loading"><div class="ico">⏳</div><div>扫描中…</div></div>';
+  try {
+    const children = await scanTree(state.dirHandle, '');
+    state.tree = { type: 'root', handle: state.dirHandle, name: '', children };
+    state.counts = { dir: 0, png: 0, json: 0, other: 0 };
+    countTree(children, state.counts);
+    updateCount();
+    renderTree();
+  } catch (e) {
+    console.error(e);
+    els.tree.innerHTML = '<div class="tree-empty"><div class="ico">!</div><div>扫描失败: ' + escapeHtml(e.message) + '</div></div>';
   }
-
-  // sort by name
-  state.cards.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-  renderList();
-  els.count.textContent = String(state.cards.length).padStart(2, '0');
 }
 
-async function loadCardDir(dirHandle, name) {
-  let jsonHandle = null, pngHandle = null;
-  for await (const [n, h] of dirHandle.entries()) {
-    if (h.kind !== 'file') continue;
-    if (n.toLowerCase().endsWith('.json') && !jsonHandle) jsonHandle = h;
-    else if (n.toLowerCase().endsWith('.png') && !pngHandle) pngHandle = h;
+function updateCount() {
+  const c = state.counts;
+  els.count.innerHTML =
+    `<span class="c-dir">${c.dir} 📁</span> · ` +
+    `<span class="c-png">${c.png} PNG</span> · ` +
+    `<span class="c-json">${c.json} JSON</span>` +
+    (c.other ? ` · <span>${c.other} 其他</span>` : '');
+}
+
+/* ---------------- Tree render ---------------- */
+function renderTree() {
+  if (!state.tree) return;
+  els.tree.innerHTML = '';
+  if (state.tree.children.length === 0) {
+    els.tree.innerHTML = '<div class="tree-empty"><div class="ico">∅</div><div>此目录为空</div></div>';
+    return;
   }
-  if (!jsonHandle && !pngHandle) return null;
+  for (const child of state.tree.children) {
+    renderNode(child, 0, els.tree);
+  }
+}
 
-  let data = null, hasWatermark = false, hasError = false;
-  let fileSize = 0;
-  let pngBytes = null;
-  let source = 'none';  // 'json' | 'png' | 'none'
+function renderNode(node, depth, container) {
+  const isExpanded = state.expanded.has(node.path);
+  const isActive = state.activeFile === node;
 
-  if (jsonHandle) {
-    try {
-      const file = await jsonHandle.getFile();
-      const jsonText = await file.text();
-      data = JSON.parse(jsonText);
-      hasWatermark = checkWatermark(data);
-      source = 'json';
-    } catch (e) {
-      hasError = true;
+  const row = document.createElement('div');
+  row.className = `tree-row ${node.type}` + (node.type === 'dir' && isExpanded ? ' expanded' : '') + (isActive ? ' active' : '');
+  row.style.paddingLeft = `${6 + depth * 14}px`;
+  row.dataset.path = node.path;
+
+  // caret
+  if (node.type === 'dir') {
+    const caret = document.createElement('span');
+    caret.className = 'caret';
+    caret.innerHTML = ICONS.caret;
+    caret.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDir(node);
+    });
+    row.appendChild(caret);
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'caret spacer';
+    spacer.innerHTML = ICONS.caret;
+    row.appendChild(spacer);
+  }
+
+  // icon
+  const ico = document.createElement('span');
+  ico.className = 'ico';
+  if (node.type === 'dir') {
+    ico.innerHTML = isExpanded ? ICONS.folderOpen : ICONS.folder;
+  } else if (node.fileType === 'png') {
+    ico.innerHTML = ICONS.png;
+  } else if (node.fileType === 'json') {
+    ico.innerHTML = ICONS.json;
+  } else {
+    ico.innerHTML = ICONS.file;
+  }
+  row.appendChild(ico);
+
+  // name
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = node.name;
+  name.title = node.path;
+  row.appendChild(name);
+
+  // type badge
+  if (node.type === 'file' && (node.fileType === 'png' || node.fileType === 'json')) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = node.fileType.toUpperCase();
+    row.appendChild(badge);
+  }
+
+  // click handler
+  if (node.type === 'dir') {
+    row.addEventListener('click', () => toggleDir(node));
+  } else if (node.fileType === 'png' || node.fileType === 'json') {
+    row.addEventListener('click', () => selectFile(node));
+  }
+
+  container.appendChild(row);
+
+  // children container
+  if (node.type === 'dir' && node.children.length > 0) {
+    const childContainer = document.createElement('div');
+    childContainer.className = 'tree-children' + (isExpanded ? ' show' : '');
+    for (const c of node.children) {
+      renderNode(c, depth + 1, childContainer);
     }
+    container.appendChild(childContainer);
   }
-  if (pngHandle) {
-    const file = await pngHandle.getFile();
-    fileSize = file.size;
-    pngBytes = new Uint8Array(await file.arrayBuffer());
-    if (!data) {
-      try {
-        const parsed = parsePngCharacterData(pngBytes);
-        data = parsed.data;
-        hasWatermark = checkWatermark(data);
-        source = 'png';
-      } catch (e) {
-        if (!jsonHandle) hasError = true;
+}
+
+function toggleDir(node) {
+  if (state.expanded.has(node.path)) {
+    state.expanded.delete(node.path);
+  } else {
+    state.expanded.add(node.path);
+  }
+  renderTree();
+}
+
+function expandAll() {
+  if (!state.tree) return;
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (n.type === 'dir') {
+        state.expanded.add(n.path);
+        walk(n.children);
       }
     }
-  }
+  };
+  walk(state.tree.children);
+  renderTree();
+}
 
+function collapseAll() {
+  state.expanded.clear();
+  renderTree();
+}
+
+/* ---------------- File load / select ---------------- */
+async function loadPngItem(handle, name) {
+  const file = await handle.getFile();
+  const pngBytes = new Uint8Array(await file.arrayBuffer());
+  let data = null, hasWatermark = false, hasError = false;
+  try {
+    const parsed = parsePngCharacterData(pngBytes);
+    data = parsed.data;
+    hasWatermark = checkWatermark(data);
+  } catch (e) {
+    hasError = true;
+  }
   return {
-    dirHandle,
-    name,
-    displayName: data?.name || name,
-    jsonHandle, pngHandle,
-    pngBytes, data,
-    hasWatermark,
-    hasError,
-    fileSize,
-    source,
+    type: 'png', handle, name, file,
+    pngBytes, data, hasWatermark, hasError, fileSize: file.size,
+  };
+}
+
+async function loadJsonItem(handle, name) {
+  const file = await handle.getFile();
+  let data = null, hasError = false;
+  try {
+    const text = await file.text();
+    data = JSON.parse(text);
+  } catch (e) {
+    hasError = true;
+  }
+  return {
+    type: 'json', handle, name, file,
+    data, hasError, fileSize: file.size,
   };
 }
 
@@ -611,96 +808,68 @@ function checkWatermark(obj) {
   return typeof w === 'string' && w.trim().toLowerCase() === 'rp-hub';
 }
 
-function renderList() {
-  if (state.cards.length === 0) {
-    els.list.innerHTML = `
-      <div class="empty-state">
-        <div class="ico">∅</div>
-        <div>此目录下未找到角色卡</div>
-      </div>`;
-    return;
+async function selectFile(node) {
+  if (state.loading) return;
+  if (state.activeFile === node) return;
+  if (state.dirty) {
+    if (!confirm('当前文件有未保存的修改，确定切换吗？')) return;
   }
-  els.list.innerHTML = '';
-  state.cards.forEach((card, idx) => {
-    const div = document.createElement('div');
-    div.className = 'card-item' + (idx === state.activeIndex ? ' active' : '');
-    const sizeKb = (card.fileSize / 1024).toFixed(0);
-    const waterBadge = card.hasError
-      ? '<span class="badge err">解析失败</span>'
-      : card.hasWatermark
-        ? '<span class="badge ok">RP-Hub</span>'
-        : '<span class="badge warn">未水印</span>';
-    const fileBadge = card.jsonHandle && card.pngHandle
-      ? '<span class="badge muted">json+png</span>'
-      : card.pngHandle
-        ? '<span class="badge muted">png</span>'
-        : '<span class="badge muted">json</span>';
-    const sourceBadge = card.source === 'json'
-      ? '<span class="badge ok" title="编辑器中的 JSON 来自 .json 文件">源:JSON</span>'
-      : card.source === 'png'
-        ? '<span class="badge warn" title="无 .json 文件，编辑器显示从 PNG 解析的内容">源:PNG</span>'
-        : '';
-    div.innerHTML = `
-      <div class="name">${escapeHtml(card.displayName)}</div>
-      <div class="meta">
-        ${waterBadge}
-        ${fileBadge}
-      </div>
-      <div class="meta" style="margin-top:6px">
-        ${sourceBadge}
-        <span style="margin-left:auto;color:var(--ink-3)">${sizeKb}kb</span>
-      </div>
-    `;
-    div.addEventListener('click', () => selectCard(idx));
-    els.list.appendChild(div);
-  });
+  state.loading = true;
+  try {
+    if (!node.item) {
+      if (node.fileType === 'png') {
+        node.item = await loadPngItem(node.handle, node.name);
+      } else if (node.fileType === 'json') {
+        node.item = await loadJsonItem(node.handle, node.name);
+      }
+    }
+    state.activeFile = node;
+    state.dirty = false;
+    state.originalJson = '';
+    renderTree();
+    renderEditor(node.item);
+  } catch (e) {
+    console.error(e);
+    toast('加载失败: ' + e.message, 'err');
+  } finally {
+    state.loading = false;
+  }
 }
 
-function selectCard(idx) {
-  if (state.dirty && idx !== state.activeIndex) {
-    if (!confirm('当前卡片有未保存的修改，确定切换吗？')) return;
-  }
-  state.activeIndex = idx;
-  state.dirty = false;
-  state.originalJson = '';
-  renderList();
-  renderEditor();
-}
-
+/* ---------------- Editor ---------------- */
 function renderEditor() {
-  if (state.activeIndex < 0) {
+  if (!state.activeFile) {
     els.workspace.innerHTML = '';
     els.workspace.appendChild(els.wsEmpty);
+    window.onbeforeunload = null;
     return;
   }
-  const card = state.cards[state.activeIndex];
-  const jsonName = card.jsonHandle ? card.jsonHandle.name : '(无 JSON)';
-  const pngName = card.pngHandle ? card.pngHandle.name : '(无 PNG)';
-
-  const data = card.data || {};
-  const root = data.data || data;
-  const spec = root.spec || '—';
-  const charName = root.name || card.name;
-  const hasWm = card.hasWatermark;
-  const hasErr = card.hasError;
-  const sizeKb = (card.fileSize / 1024).toFixed(1);
-
-  let jsonText = '';
-  let jsonValid = true;
-  if (card.jsonHandle) {
-    // We'll fetch fresh on save; for now show parsed data formatted
-    jsonText = JSON.stringify(data, null, 2);
-    state.originalJson = jsonText;
+  const item = state.activeFile.item;
+  if (item.type === 'png') {
+    renderPngEditor(item);
+  } else {
+    renderJsonEditor(item);
   }
+  window.onbeforeunload = state.dirty ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
+}
 
+function renderPngEditor(item) {
+  const root = item.data?.data || item.data || {};
+  const spec = root.spec || '—';
+  const charName = root.name || '—';
+  const sizeKb = (item.fileSize / 1024).toFixed(1);
+  const hasWm = item.hasWatermark;
+  const hasErr = item.hasError;
   const tags = root.tags || [];
   const tagHtml = Array.isArray(tags) && tags.length
-    ? tags.slice(0, 4).map(t => `<span class="badge muted">${escapeHtml(String(t))}</span>`).join(' ')
-    : '<span class="badge muted">无标签</span>';
+    ? tags.slice(0, 4).map(t => `<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">${escapeHtml(String(t))}</span>`).join(' ')
+    : '<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">无标签</span>';
 
-  const imgSrc = card.pngBytes
-    ? URL.createObjectURL(new Blob([card.pngBytes], { type: 'image/png' }))
+  const imgSrc = item.pngBytes
+    ? URL.createObjectURL(new Blob([item.pngBytes], { type: 'image/png' }))
     : '';
+  const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
+  state.originalJson = jsonText;
 
   els.workspace.innerHTML = `
     <div class="ws-loaded">
@@ -708,46 +877,71 @@ function renderEditor() {
         <div class="frame">
           ${imgSrc
             ? `<img id="png-preview" src="${imgSrc}" alt="preview" />`
-            : '<div style="padding:40px;text-align:center;color:var(--ink-3);">无 PNG</div>'}
+            : '<div style="padding:40px;text-align:center;color:var(--ink-3);">无图像数据</div>'}
         </div>
         <div class="meta-card">
-          <h3>卡片信息</h3>
-          <div class="meta-row"><span class="k">名称</span><span class="v">${escapeHtml(charName)}</span></div>
+          <h3>PNG 信息</h3>
+          <div class="meta-row"><span class="k">路径</span><span class="v" style="text-align:right;word-break:break-all;max-width:60%;">${escapeHtml(state.activeFile.path)}</span></div>
+          <div class="meta-row"><span class="k">大小</span><span class="v">${sizeKb} KB</span></div>
+          <div class="meta-row"><span class="k">角色名</span><span class="v">${escapeHtml(charName)}</span></div>
           <div class="meta-row"><span class="k">规范</span><span class="v">${escapeHtml(spec)}</span></div>
           <div class="meta-row"><span class="k">水印</span><span class="v">${
-            hasErr ? '<span class="badge err">解析失败</span>'
+            hasErr ? '<span class="badge err">chara 缺失</span>'
             : hasWm ? '<span class="badge ok">rp-hub ✓</span>'
             : '<span class="badge warn">未设置</span>'}</span></div>
-          <div class="meta-row"><span class="k">PNG</span><span class="v">${escapeHtml(pngName)}</span></div>
-          <div class="meta-row"><span class="k">大小</span><span class="v">${sizeKb} KB</span></div>
           <div class="meta-row" style="display:block">
             <span class="k" style="display:block;margin-bottom:6px;">标签</span>
             <span class="v" style="display:flex;flex-wrap:wrap;gap:4px;">${tagHtml}</span>
           </div>
         </div>
+        <div class="meta-card" style="border-style:dashed;">
+          <h3>PNG 专属操作</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button class="btn png-btn" id="btn-export-json" style="justify-content:flex-start;">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              导出 JSON 文件
+            </button>
+            <button class="btn png-btn" id="btn-import-json" style="justify-content:flex-start;">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              导入 JSON 覆盖
+            </button>
+            <div style="font-size:11px;color:var(--ink-3);line-height:1.6;margin-top:4px;padding:0 4px;">
+              <div>· 导出：将 PNG 内 chara 写入同目录 <code style="background:var(--bg-2);padding:1px 4px;border-radius:3px;">同文件名.json</code></div>
+              <div>· 导入：从任意 <code style="background:var(--bg-2);padding:1px 4px;border-radius:3px;">.json</code> 读入，载入到右侧编辑器（点保存回写 PNG）</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="editor">
         <div class="editor-head">
-          <div class="editor-title">
-            <span class="file-ico">{ }</span>
-            <span class="fname">${escapeHtml(jsonName)}</span>
+          <div class="editor-title png">
+            <span class="file-ico">{ chara }</span>
+            <span class="fname">${escapeHtml(item.name)} · tEXt 内容</span>
           </div>
           <div class="editor-actions">
             <button class="btn ghost" id="btn-format" title="格式化 JSON">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
               格式化
             </button>
-            <button class="btn ghost" id="btn-revert" title="放弃修改">
+            <button class="btn ghost" id="btn-revert" title="还原">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
               还原
             </button>
-            <button class="btn primary" id="btn-save" title="保存到 JSON 和 PNG">
+            <button class="btn" id="btn-add-wm" title="添加 rp-hub 水印">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              水印
+            </button>
+            <button class="btn" id="btn-rm-wm" title="去除 rp-hub 水印">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
+              去水印
+            </button>
+            <button class="btn primary" id="btn-save" title="写回 PNG 的 tEXt 块">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              保存
+              保存到 PNG
             </button>
           </div>
         </div>
-        <textarea class="json-edit" id="json-edit" spellcheck="false" ${card.jsonHandle ? '' : 'placeholder="此卡片无 JSON 文件"'}>${escapeHtml(jsonText)}</textarea>
+        <textarea class="json-edit" id="json-edit" spellcheck="false" placeholder="PNG 中没有 chara 数据">${escapeHtml(jsonText)}</textarea>
         <div class="status-bar">
           <div class="left">
             <div class="indicator"><span class="dot" id="valid-dot"></span><span id="valid-text">—</span></div>
@@ -762,6 +956,82 @@ function renderEditor() {
     </div>
   `;
 
+  bindEditorCommon();
+  $('#btn-save').addEventListener('click', () => savePng());
+  $('#btn-export-json').addEventListener('click', () => exportPngJson());
+  $('#btn-import-json').addEventListener('click', () => triggerImportJson());
+  $('#btn-add-wm').addEventListener('click', () => addWatermark());
+  $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
+}
+
+function renderJsonEditor(item) {
+  const root = item.data?.data || item.data || {};
+  const spec = root.spec || '—';
+  const charName = root.name || '—';
+  const sizeKb = (item.fileSize / 1024).toFixed(1);
+  const hasWm = checkWatermark(item.data);
+  const hasErr = item.hasError;
+
+  const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
+  state.originalJson = jsonText;
+
+  els.workspace.innerHTML = `
+    <div class="ws-loaded full">
+      <div class="editor" style="border-right:none;">
+        <div class="editor-head">
+          <div class="editor-title json">
+            <span class="file-ico">{ }</span>
+            <span class="fname">${escapeHtml(item.name)}</span>
+          </div>
+          <div class="editor-actions">
+            <button class="btn ghost" id="btn-format" title="格式化 JSON">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
+              格式化
+            </button>
+            <button class="btn ghost" id="btn-revert" title="还原">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              还原
+            </button>
+            <button class="btn" id="btn-add-wm" title="添加 rp-hub 水印">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              水印
+            </button>
+            <button class="btn" id="btn-rm-wm" title="去除 rp-hub 水印">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
+              去水印
+            </button>
+            <button class="btn primary" id="btn-save" title="保存到 JSON 文件">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              保存
+            </button>
+          </div>
+        </div>
+        <textarea class="json-edit" id="json-edit" spellcheck="false" ${hasErr ? 'placeholder="JSON 解析失败"' : ''}>${escapeHtml(jsonText)}</textarea>
+        <div class="status-bar">
+          <div class="left">
+            <div class="indicator"><span class="dot" id="valid-dot"></span><span id="valid-text">—</span></div>
+            <div class="msg" id="status-msg"></div>
+            <span style="color:var(--ink-3);">路径: <code style="background:var(--bg-2);padding:1px 5px;border-radius:3px;">${escapeHtml(state.activeFile.path)}</code> · 规范: ${escapeHtml(spec)} · 角色: ${escapeHtml(charName)} · ${
+              hasErr ? '<span class="msg err">JSON 错误</span>'
+              : hasWm ? '<span class="msg ok">rp-hub ✓</span>'
+              : '<span class="msg warn">未水印</span>'}</span>
+          </div>
+          <div class="right">
+            <span id="char-count">0 字符</span>
+            <span id="line-count">0 行</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindEditorCommon();
+  $('#btn-save').addEventListener('click', () => saveJson());
+  $('#btn-add-wm').addEventListener('click', () => addWatermark());
+  $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
+}
+
+function bindEditorCommon() {
   const ta = $('#json-edit');
   const validDot = $('#valid-dot');
   const validText = $('#valid-text');
@@ -786,6 +1056,7 @@ function renderEditor() {
       validText.textContent = 'JSON 错误: ' + e.message;
       $('#btn-save').disabled = true;
     }
+    window.onbeforeunload = state.dirty ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
   }
 
   ta.addEventListener('input', updateStatus);
@@ -817,15 +1088,58 @@ function renderEditor() {
     updateStatus();
     toast('已还原', 'ok', 1200);
   });
-  $('#btn-save').addEventListener('click', () => saveCard());
-
-  // Warn on close
-  window.onbeforeunload = state.dirty ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
 }
 
-async function saveCard() {
+/* ---------------- Save flows ---------------- */
+function ensureWatermark(jsonData) {
+  const root = jsonData.data || jsonData;
+  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+  if (!root.extensions.rp_hub_watermark) root.extensions.rp_hub_watermark = 'rp-hub';
+  if (jsonData.data) jsonData.data = root;
+  return jsonData;
+}
+
+function getEditorJson() {
+  const ta = $('#json-edit');
+  if (!ta) return null;
+  try { return JSON.parse(ta.value); } catch (e) { return null; }
+}
+
+function setEditorJson(obj) {
+  const ta = $('#json-edit');
+  if (!ta) return;
+  ta.value = JSON.stringify(obj, null, 2);
+  ta.dispatchEvent(new Event('input'));
+}
+
+function addWatermark() {
+  const data = getEditorJson();
+  if (!data) { toast('JSON 无效，无法添加水印', 'err'); return; }
+  const root = data.data || data;
+  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+  root.extensions.rp_hub_watermark = 'rp-hub';
+  if (data.data) data.data = root;
+  setEditorJson(data);
+  toast('已添加 rp-hub 水印', 'ok');
+}
+
+function removeWatermark() {
+  const data = getEditorJson();
+  if (!data) { toast('JSON 无效，无法去除水印', 'err'); return; }
+  const root = data.data || data;
+  if (root.extensions) {
+    delete root.extensions.rp_hub_watermark;
+    if (Object.keys(root.extensions).length === 0) delete root.extensions;
+  }
+  if (data.data) data.data = root;
+  setEditorJson(data);
+  toast('已去除水印', 'ok');
+}
+
+async function savePng() {
   if (state.saving) return;
-  const card = state.cards[state.activeIndex];
+  const node = state.activeFile;
+  const item = node.item;
   const ta = $('#json-edit');
   let jsonData;
   try {
@@ -834,70 +1148,93 @@ async function saveCard() {
     toast('JSON 错误: ' + e.message, 'err');
     return;
   }
-
-  // Ensure watermark
-  const root = jsonData.data || jsonData;
-  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
-  if (!root.extensions.rp_hub_watermark) root.extensions.rp_hub_watermark = 'rp-hub';
-  if (jsonData.data) jsonData.data = root;
+  jsonData = ensureWatermark(jsonData);
   const finalText = JSON.stringify(jsonData, null, 2);
 
   state.saving = true;
   const saveBtn = $('#btn-save');
   saveBtn.disabled = true;
-  saveBtn.innerHTML = '<span>保存中…</span>';
+  saveBtn.textContent = '保存中…';
+  const statusMsg = $('#status-msg');
+  statusMsg.className = 'msg';
+  statusMsg.textContent = '正在写入 PNG…';
+
+  try {
+    const payload = encodeBase64Utf8(JSON.stringify(jsonData));
+    const newPng = injectPngTextChunk(item.pngBytes, 'chara', payload);
+    const w = await item.handle.createWritable();
+    await w.write(newPng);
+    await w.close();
+    item.pngBytes = newPng;
+    item.data = jsonData;
+    item.hasWatermark = checkWatermark(jsonData);
+    item.fileSize = newPng.length;
+
+    state.originalJson = finalText;
+    ta.value = finalText;
+    state.dirty = false;
+
+    const img = $('#png-preview');
+    if (img) {
+      URL.revokeObjectURL(img.src);
+      img.src = URL.createObjectURL(new Blob([newPng], { type: 'image/png' }));
+    }
+
+    statusMsg.className = 'msg ok';
+    statusMsg.textContent = '✓ 已写入 PNG ' + new Date().toLocaleTimeString();
+    renderTree();
+    toast('已写入 PNG 的 tEXt 块', 'ok');
+  } catch (e) {
+    console.error(e);
+    statusMsg.className = 'msg err';
+    statusMsg.textContent = '保存失败: ' + e.message;
+    toast('保存失败: ' + e.message, 'err');
+  } finally {
+    state.saving = false;
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = `
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      保存到 PNG`;
+  }
+}
+
+async function saveJson() {
+  if (state.saving) return;
+  const node = state.activeFile;
+  const item = node.item;
+  const ta = $('#json-edit');
+  let jsonData;
+  try {
+    jsonData = JSON.parse(ta.value);
+  } catch (e) {
+    toast('JSON 错误: ' + e.message, 'err');
+    return;
+  }
+  const finalText = JSON.stringify(jsonData, null, 2);
+
+  state.saving = true;
+  const saveBtn = $('#btn-save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中…';
   const statusMsg = $('#status-msg');
   statusMsg.className = 'msg';
   statusMsg.textContent = '正在写入文件…';
 
   try {
-    // 1. Write JSON file
-    if (card.jsonHandle) {
-      const w = await card.jsonHandle.createWritable();
-      await w.write(finalText);
-      await w.close();
-    } else {
-      // create new
-      const baseName = (card.pngHandle?.name || card.name).replace(/\.png$/i, '');
-      card.jsonHandle = await card.dirHandle.getFileHandle(baseName + '.json', { create: true });
-      const w = await card.jsonHandle.createWritable();
-      await w.write(finalText);
-      await w.close();
-    }
-
-    // 2. Inject into PNG
-    if (card.pngHandle) {
-      // Re-read PNG if we don't have bytes yet
-      if (!card.pngBytes) {
-        const file = await card.pngHandle.getFile();
-        card.pngBytes = new Uint8Array(await file.arrayBuffer());
-      }
-      const payload = encodeBase64Utf8(JSON.stringify(jsonData));
-      const newPng = injectPngTextChunk(card.pngBytes, 'chara', payload);
-      const w = await card.pngHandle.createWritable();
-      await w.write(newPng);
-      await w.close();
-      card.pngBytes = newPng;
-
-      // Update preview
-      const img = $('#png-preview');
-      if (img) {
-        URL.revokeObjectURL(img.src);
-        img.src = URL.createObjectURL(new Blob([newPng], { type: 'image/png' }));
-      }
-    } else {
-      toast('已保存 JSON（无 PNG 可回写）', 'warn');
-    }
-
+    const w = await item.handle.createWritable();
+    await w.write(finalText);
+    await w.close();
+    item.data = jsonData;
+    item.hasError = false;
+    item.fileSize = new Blob([finalText]).size;
     state.originalJson = finalText;
     ta.value = finalText;
     state.dirty = false;
-    card.data = jsonData;
-    card.hasWatermark = checkWatermark(jsonData);
-    renderList();
+
     statusMsg.className = 'msg ok';
     statusMsg.textContent = '✓ 已保存 ' + new Date().toLocaleTimeString();
-    toast('已保存并写入 PNG', 'ok');
+    renderTree();
+    toast('已保存 JSON 文件', 'ok');
   } catch (e) {
     console.error(e);
     statusMsg.className = 'msg err';
@@ -912,6 +1249,87 @@ async function saveCard() {
   }
 }
 
+/* ---------------- PNG-specific: export / import JSON ---------------- */
+async function exportPngJson() {
+  const node = state.activeFile;
+  const item = node.item;
+  if (!item.data) {
+    toast('PNG 中没有可导出的 JSON', 'err');
+    return;
+  }
+  const baseName = item.name.replace(/\.png$/i, '');
+  const outName = baseName + '.json';
+  const statusMsg = $('#status-msg');
+  statusMsg.className = 'msg';
+  statusMsg.textContent = '正在导出…';
+  try {
+    let existing = null;
+    try { existing = await state.dirHandle.getFileHandle(outName); } catch (_) {}
+    if (existing) {
+      if (!confirm(`已存在 ${outName}，要覆盖吗？`)) {
+        statusMsg.textContent = '';
+        return;
+      }
+    }
+    const fh = await state.dirHandle.getFileHandle(outName, { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(item.data, null, 2));
+    await w.close();
+    statusMsg.className = 'msg ok';
+    statusMsg.textContent = `✓ 已导出 ${outName}`;
+    toast(`已导出 ${outName}`, 'ok');
+    // refresh tree to pick up new file
+    await scanAndBuild();
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error(e);
+      statusMsg.className = 'msg err';
+      statusMsg.textContent = '导出失败: ' + e.message;
+      toast('导出失败: ' + e.message, 'err');
+    }
+  }
+}
+
+function triggerImportJson() {
+  els.importFile.value = '';
+  els.importFile.click();
+}
+
+els.importFile.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const node = state.activeFile;
+  if (!node || node.fileType !== 'png') return;
+
+  const statusMsg = $('#status-msg');
+  statusMsg.className = 'msg';
+  statusMsg.textContent = '正在读取导入文件…';
+  try {
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    const formatted = JSON.stringify(obj, null, 2);
+
+    const ta = $('#json-edit');
+    ta.value = formatted;
+    node.item.data = obj;
+    state.dirty = true;
+
+    ta.dispatchEvent(new Event('input'));
+
+    statusMsg.className = 'msg warn';
+    statusMsg.textContent = `⚠ 已从 ${file.name} 载入，点击「保存到 PNG」写入`;
+    toast('已载入导入文件，请检查后保存', 'warn');
+  } catch (e) {
+    console.error(e);
+    statusMsg.className = 'msg err';
+    statusMsg.textContent = '导入失败: ' + e.message;
+    toast('导入失败: ' + e.message, 'err');
+  } finally {
+    els.importFile.value = '';
+  }
+});
+
+/* ---------------- Unsupported browser ---------------- */
 function renderUnsupported() {
   els.workspace.innerHTML = `
     <div class="nope">
@@ -923,7 +1341,6 @@ function renderUnsupported() {
 }
 
 /* ---------------- PNG tEXt chunk read/write ---------------- */
-
 const PNG_SIGNATURE = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
 function readPngChunks(buffer) {
@@ -1085,9 +1502,38 @@ els.pickBtn.addEventListener('click', pickDirectory);
 els.refreshBtn.addEventListener('click', async () => {
   if (!state.dirHandle) return;
   els.refreshBtn.disabled = true;
-  await scanDirectory();
+  // Drop loaded items so they re-read
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (n.type === 'file') n.item = null;
+      else walk(n.children);
+    }
+  };
+  if (state.tree) walk(state.tree.children);
+  state.activeFile = null;
+  renderEditor();
+  await scanAndBuild();
   els.refreshBtn.disabled = false;
   toast('已刷新', 'ok', 1000);
+});
+els.collapseBtn.addEventListener('click', () => {
+  if (state.expanded.size === 0) {
+    // expand all if currently collapsed
+    if (state.tree) {
+      const walk = (nodes) => {
+        for (const n of nodes) {
+          if (n.type === 'dir') {
+            state.expanded.add(n.path);
+            walk(n.children);
+          }
+        }
+      };
+      walk(state.tree.children);
+    }
+  } else {
+    state.expanded.clear();
+  }
+  renderTree();
 });
 
 if (!SUPPORTS_FSA) {
