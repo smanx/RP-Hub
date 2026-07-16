@@ -7,6 +7,7 @@ RP-Hub 构建脚本
 """
 
 import os
+import re
 import sys
 import time
 import hashlib
@@ -88,6 +89,45 @@ def download_file(urls: list, dest_path: str, name: str) -> str:
             else:
                 print_error(f"    ✗ {name} 下载失败: {e}")
     return ""
+
+
+def download_google_fonts(css_url: str, dest_css_path: str, fonts_dir: str) -> tuple:
+    """下载 Google Fonts CSS 及其引用的所有字体文件，本地化后返回 (css_hash, 字体文件名列表)"""
+    print(f"  - 正在下载 Google Fonts CSS...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    req = urllib.request.Request(css_url, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as response:
+        css_content = response.read().decode('utf-8')
+
+    font_url_pattern = re.compile(r'url\((https://fonts\.gstatic\.com/[^)]+)\)')
+    font_urls = list(dict.fromkeys(font_url_pattern.findall(css_content)))
+    print(f"  - 发现 {len(font_urls)} 个字体文件需要下载")
+
+    os.makedirs(fonts_dir, exist_ok=True)
+    font_filenames = []
+    for font_url in font_urls:
+        font_filename = font_url.split('/')[-1]
+        font_dest = os.path.join(fonts_dir, font_filename)
+
+        print(f"    - 下载 {font_filename}...")
+        try:
+            req = urllib.request.Request(font_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as response, open(font_dest, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+            font_filenames.append(font_filename)
+        except Exception as e:
+            print_warning(f"    ⚠ 字体下载失败 {font_filename}: {e}")
+
+        css_content = css_content.replace(font_url, f'../fonts/{font_filename}')
+
+    with open(dest_css_path, 'w', encoding='utf-8') as f:
+        f.write(css_content)
+
+    css_hash = calculate_file_hash(dest_css_path)
+    print_success(f"  ✓ Google Fonts 本地化完成 ({len(font_filenames)} 个字体文件, hash: {css_hash})")
+    return css_hash, font_filenames
 
 
 def replace_in_file(file_path: str, replacements: dict) -> None:
@@ -599,6 +639,7 @@ def main():
     shutil.copy2(script_dir / "index.html", build_dir / "index.html")
     shutil.copytree(script_dir / "character", build_dir / "character", dirs_exist_ok=True)
     shutil.copytree(script_dir / "assets", build_dir / "assets", dirs_exist_ok=True)
+    shutil.copytree(script_dir / "card-marker", build_dir / "card-marker", dirs_exist_ok=True)
     shutil.copy2(script_dir / "card-script.user.js", build_dir / "card-script.user.js")
     print_success("  ✓ 项目文件复制完成")
     
@@ -733,7 +774,25 @@ def main():
             shutil.move(str(file_path), hashed_path)
             resource_map[filename] = Path(hashed_path).name
             print_success(f"  ✓ {filename} -> {resource_map[filename]} (hash: {file_hash})")
-    
+
+    print_info("本地化 Google Fonts...")
+    google_fonts_css_url = "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&display=swap"
+    fonts_dir = build_dir / "assets" / "fonts"
+    lora_css_path = build_dir / "assets" / "css" / "lora.css"
+    lora_hash = ""
+    font_filenames = []
+    try:
+        lora_hash, font_filenames = download_google_fonts(
+            google_fonts_css_url, str(lora_css_path), str(fonts_dir)
+        )
+    except Exception as e:
+        print_warning(f"  ⚠ Google Fonts 本地化失败: {e}")
+    if lora_hash:
+        hashed_lora_path, _ = get_hashed_filename(str(lora_css_path))
+        shutil.move(str(lora_css_path), hashed_lora_path)
+        resource_map['lora.css'] = Path(hashed_lora_path).name
+        print_success(f"  ✓ lora.css -> {resource_map['lora.css']} (hash: {lora_hash})")
+
     print_info("计算 index.html hash...")
     index_html_path = build_dir / "index.html"
     index_hash = calculate_file_hash(str(index_html_path))
@@ -764,6 +823,10 @@ def main():
         "assets/js/ui-select.js": f"./assets/js/{resource_map['ui-select.js']}",
         "assets/css/styles.css": f"./assets/css/{resource_map['styles.css']}",
     }
+    if 'lora.css' in resource_map:
+        replacements["https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&display=swap"] = f"./assets/css/{resource_map['lora.css']}"
+        replacements['<link rel="preconnect" href="https://fonts.googleapis.com">'] = ""
+        replacements['<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'] = ""
     replace_in_file(str(index_html_path), replacements)
     
     with open(index_html_path, 'r', encoding='utf-8') as f:
@@ -819,6 +882,10 @@ def main():
         f"./assets/{resource_map['icon.svg']}",
         "./manifest.json",
     ]
+    if 'lora.css' in resource_map:
+        cache_urls.append(f"./assets/css/{resource_map['lora.css']}")
+        for font_name in font_filenames:
+            cache_urls.append(f"./assets/fonts/{font_name}")
     
     print_info("\n生成 PWA 支持文件...")
     generate_manifest_json(str(build_dir / "manifest.json"), f"./assets/{resource_map['icon.svg']}")
