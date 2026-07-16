@@ -445,7 +445,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s, transform 0.2s;
-    z-index: 100;
+    z-index: 500;
     display: flex; align-items: center; gap: 8px;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -1360,6 +1360,7 @@ function closeJsonEditorModal() {
 }
 
 async function saveJsonFromModal() {
+  if (state.saving) return;
   const ta = $('#jem-textarea');
   if (!ta) return;
   let parsed;
@@ -1374,37 +1375,47 @@ async function saveJsonFromModal() {
   const item = state.activeFile?.item;
   if (!item) { toast('没有活动的文件', 'err'); return; }
   const isPng = item.type === 'png';
+
+  if (isPng) {
+    // For PNG: update in-memory data, close modal, then delegate to savePng()
+    // which has the proven file-write logic
+    item.data = ensureWatermark(parsed);
+    state.originalJson = JSON.stringify(item.data, null, 2);
+    state.dirty = true;
+    closeJsonEditorModal();
+    renderEditor(state.activeFile?.item);
+    await savePng();
+    return;
+  }
+
+  // For JSON: save directly to file
+  state.saving = true;
+  const saveBtn = $('#jem-btn-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中…'; }
+
   try {
-    if (isPng) {
-      const jsonData = ensureWatermark(parsed);
-      const finalText = JSON.stringify(jsonData, null, 2);
-      const payload = encodeBase64Utf8(JSON.stringify(jsonData));
-      const newPng = injectPngTextChunk(item.pngBytes, 'chara', payload);
-      const w = await item.handle.createWritable();
-      await w.write(newPng);
-      await w.close();
-      item.pngBytes = newPng;
-      item.data = jsonData;
-      item.hasWatermark = checkWatermark(jsonData);
-      item.fileSize = newPng.length;
-      state.originalJson = finalText;
-    } else {
-      const finalText = JSON.stringify(parsed, null, 2);
-      const w = await item.handle.createWritable();
-      await w.write(finalText);
-      await w.close();
-      item.data = parsed;
-      item.hasError = false;
-      item.fileSize = new Blob([finalText]).size;
-      state.originalJson = finalText;
-    }
+    const finalText = JSON.stringify(parsed, null, 2);
+    const w = await item.handle.createWritable();
+    await w.write(finalText);
+    await w.close();
+    item.data = parsed;
+    item.hasError = false;
+    item.fileSize = new Blob([finalText]).size;
+    state.originalJson = finalText;
     state.dirty = false;
     closeJsonEditorModal();
     renderEditor(state.activeFile?.item);
-    if (!isPng) renderTree();
-    toast(isPng ? '已保存到 PNG ✓' : '已保存 JSON 文件', 'ok');
+    renderTree();
+    toast('已保存 JSON 文件', 'ok');
   } catch (err) {
+    console.error(err);
     toast('保存失败: ' + err.message, 'err');
+  } finally {
+    state.saving = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存';
+    }
   }
 }
 
@@ -1413,11 +1424,10 @@ function bindJsonEditorModal() {
   if (!ta) return;
   const validDot = $('#jem-valid-dot');
   const validText = $('#jem-valid-text');
-  const wmDot = $('#jem-wm-dot');
-  const wmText = $('#jem-wm-text');
+  const wmDot = '#jem-wm-dot';
+  const wmText = '#jem-wm-text';
   const charCount = $('#jem-char-count');
   const lineCount = $('#jem-line-count');
-  const statusMsg = $('#jem-status-msg');
 
   function updateStatus() {
     ta.style.boxShadow = '';
@@ -1436,20 +1446,22 @@ function bindJsonEditorModal() {
       validDot.className = 'dot err';
       validText.textContent = 'JSON 错误: ' + e.message;
     }
+    const wmDotEl = $(wmDot), wmTextEl = $(wmText);
     if (isValid && hasWm) {
-      wmDot.className = 'dot ok';
-      wmText.textContent = '水印 ✓';
+      wmDotEl.className = 'dot ok';
+      wmTextEl.textContent = '水印 ✓';
     } else if (isValid) {
-      wmDot.className = 'dot warn';
-      wmText.textContent = '无水印';
+      wmDotEl.className = 'dot warn';
+      wmTextEl.textContent = '无水印';
     } else {
-      wmDot.className = 'dot';
-      wmText.textContent = '—';
+      wmDotEl.className = 'dot';
+      wmTextEl.textContent = '—';
     }
   }
 
-  ta.addEventListener('input', updateStatus);
-  ta.addEventListener('keydown', (e) => {
+  // Use on* properties to avoid duplicate listeners on repeated open
+  ta.oninput = updateStatus;
+  ta.onkeydown = (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
       const s = ta.selectionStart, en = ta.selectionEnd;
@@ -1457,9 +1469,9 @@ function bindJsonEditorModal() {
       ta.selectionStart = ta.selectionEnd = s + 2;
       updateStatus();
     }
-  });
+  };
 
-  $('#jem-btn-format').addEventListener('click', () => {
+  $('#jem-btn-format').onclick = () => {
     try {
       const obj = JSON.parse(ta.value);
       ta.value = JSON.stringify(obj, null, 2);
@@ -1468,15 +1480,15 @@ function bindJsonEditorModal() {
     } catch (e) {
       toast('JSON 错误，无法格式化', 'err');
     }
-  });
+  };
 
-  $('#jem-btn-revert').addEventListener('click', () => {
+  $('#jem-btn-revert').onclick = () => {
     ta.value = state.originalJson;
     updateStatus();
     toast('已还原', 'ok', 1200);
-  });
+  };
 
-  $('#jem-btn-wm').addEventListener('click', () => {
+  $('#jem-btn-wm').onclick = () => {
     try {
       const data = JSON.parse(ta.value);
       const root = data.data || data;
@@ -1489,10 +1501,10 @@ function bindJsonEditorModal() {
     } catch (e) {
       toast('JSON 无效，无法添加水印', 'err');
     }
-  });
+  };
 
-  $('#jem-btn-save').addEventListener('click', saveJsonFromModal);
-  $('#jem-btn-close').addEventListener('click', closeJsonEditorModal);
+  $('#jem-btn-save').onclick = saveJsonFromModal;
+  $('#jem-btn-close').onclick = closeJsonEditorModal;
 
   updateStatus();
 }
@@ -1760,31 +1772,50 @@ async function savePng() {
 
   state.saving = true;
   const saveBtn = $('#btn-save');
-  saveBtn.disabled = true;
-  saveBtn.textContent = '保存中…';
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中…'; }
 
   try {
     const payload = encodeBase64Utf8(JSON.stringify(jsonData));
     const newPng = injectPngTextChunk(item.pngBytes, 'chara', payload);
     const w = await item.handle.createWritable();
-    await w.write(newPng);
+    // Use Blob for more reliable cross-browser writing
+    await w.write(new Blob([newPng], { type: 'image/png' }));
     await w.close();
-    item.pngBytes = newPng;
+
+    // Verify the write succeeded by reading back
+    const verifyFile = await item.handle.getFile();
+    const verifyBuf = new Uint8Array(await verifyFile.arrayBuffer());
+    if (verifyBuf.length !== newPng.length) {
+      throw new Error(`写入验证失败：文件大小 ${verifyBuf.length} ≠ 预期 ${newPng.length}`);
+    }
+    const verifyChunks = readPngChunks(verifyBuf);
+    const verifyPayload = findPngCharacterPayload(verifyChunks);
+    if (!verifyPayload) {
+      throw new Error('写入验证失败：PNG 中未找到 chara 数据');
+    }
+    const verifyData = parseCharacterPayload(verifyPayload);
+    if (JSON.stringify(verifyData) !== JSON.stringify(jsonData)) {
+      throw new Error('写入验证失败：数据内容不匹配');
+    }
+
+    item.pngBytes = verifyBuf;
     item.data = jsonData;
     item.hasWatermark = checkWatermark(jsonData);
-    item.fileSize = newPng.length;
+    item.fileSize = verifyBuf.length;
 
     state.originalJson = finalText;
     state.dirty = false;
 
     toast('已保存到 PNG ✓', 'ok');
   } catch (err) {
-    console.error(err);
-    toast('保存失败: ' + err.message, 'err');
+    console.error('[savePng]', err);
+    toast('保存失败: ' + err.message, 'err', 5000);
   } finally {
     state.saving = false;
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存到 PNG';
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存到 PNG';
+    }
   }
 }
 
@@ -2058,7 +2089,7 @@ function injectPngTextChunk(pngBuffer, key, value) {
   }
   const view = new DataView(pngBytes.buffer, pngBytes.byteOffset, pngBytes.byteLength);
   const textChunk = createTextChunk(key, value);
-  const removeTypes = new Set([key, 'chara', 'ccv3']);
+  const removeTypes = new Set(['tEXt', 'iTXt', 'zTXt']);
   const kept = [pngBytes.slice(0, 8)];
   let offset = 8;
   while (offset + 8 <= pngBytes.byteLength) {
