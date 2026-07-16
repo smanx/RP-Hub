@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
   :root {
     --bg-0: #0b0d10;
@@ -492,6 +494,207 @@
   .context-menu-item:hover { background: var(--bg-4); }
   .context-menu-item .icon { width: 14px; height: 14px; flex-shrink: 0; }
   .context-menu-sep { height: 1px; background: var(--line-soft); margin: 2px 4px; }
+  .context-menu .ctx-png-only.hidden { display: none; }
+
+  /* Character preview modal */
+  .preview-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .preview-modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .preview-modal {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 680px;
+    max-height: min(90vh, 800px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .preview-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .preview-modal-head h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--ink-0);
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preview-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .preview-modal-body .pm-section {
+    margin-bottom: 20px;
+  }
+  .preview-modal-body .pm-section:last-child { margin-bottom: 0; }
+  .preview-modal-body .pm-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-2);
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .preview-modal-body .pm-content {
+    color: var(--ink-1);
+    font-size: 14px;
+    line-height: 1.75;
+    word-break: break-word;
+    max-width: none;
+  }
+  .preview-modal-body .pm-content p { margin: 0.75em 0; line-height: 1.75; }
+  .preview-modal-body .pm-content p:first-child { margin-top: 0; }
+  .preview-modal-body .pm-content p:last-child { margin-bottom: 0; }
+  .preview-modal-body .pm-content strong { color: var(--ink-0); font-weight: 700; }
+  .preview-modal-body .pm-content em { color: var(--ink-2); }
+  .preview-modal-body .pm-content blockquote {
+    font-style: italic;
+    border-left: 3px solid var(--line);
+    background: var(--bg-2);
+    padding: 8px 14px;
+    margin: 1.2em 0;
+    border-radius: 0 8px 8px 0;
+    color: var(--ink-2);
+  }
+  .preview-modal-body .pm-content ul, .preview-modal-body .pm-content ol {
+    margin: 0.8em 0;
+    padding-left: 1.625em;
+  }
+  .preview-modal-body .pm-content ul { list-style-type: disc; }
+  .preview-modal-body .pm-content ol { list-style-type: decimal; }
+  .preview-modal-body .pm-content li { margin: 0.4em 0; }
+  .preview-modal-body .pm-content code {
+    background: var(--bg-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-weight: 600;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .preview-modal-body .pm-content pre {
+    background: var(--bg-0);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 14px;
+    overflow-x: auto;
+    margin: 0.8em 0;
+  }
+  .preview-modal-body .pm-content pre code {
+    background: none;
+    padding: 0;
+    color: var(--ink-0);
+    font-weight: 400;
+  }
+  .preview-modal-body .pm-content a { color: var(--png); text-decoration: underline; }
+  .preview-modal-body .pm-content h1, .preview-modal-body .pm-content h2,
+  .preview-modal-body .pm-content h3, .preview-modal-body .pm-content h4 {
+    color: var(--ink-0);
+    font-weight: 700;
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    line-height: 1.3;
+  }
+  .preview-modal-body .pm-content h1 { font-size: 1.4em; }
+  .preview-modal-body .pm-content h2 { font-size: 1.2em; }
+  .preview-modal-body .pm-content h3 { font-size: 1.1em; }
+  .preview-modal-body .pm-deco-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .preview-modal-body .pm-deco-head .pm-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+  .preview-modal-body .pm-deco-head .pm-line {
+    flex: 1;
+    height: 2px;
+    background: var(--line-soft);
+    border-radius: 1px;
+  }
+  .preview-modal-body .pm-creator-notes {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: rgba(107, 184, 255, 0.06);
+    border: 1px solid rgba(107, 184, 255, 0.15);
+    border-radius: 12px;
+    color: var(--ink-1);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .preview-modal-body .pm-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .preview-modal-body .pm-tag {
+    background: rgba(107, 184, 255, 0.08);
+    color: var(--png);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(107, 184, 255, 0.2);
+  }
+  .preview-modal-body .pm-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--ink-2);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .preview-modal-body .pm-empty {
+    color: var(--ink-3);
+    font-style: italic;
+    font-size: 13px;
+  }
+  .preview-modal-body .pm-ui-template {
+    margin-bottom: 20px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: var(--bg-2);
+    padding: 14px;
+    overflow: hidden;
+  }
+  .preview-modal-body .pm-ui-template .pm-ui-name {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--ink-2);
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
 </style>
 </head>
 <body>
@@ -565,9 +768,30 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
     删除
   </div>
+  <div class="context-menu-sep ctx-png-only"></div>
+  <div class="context-menu-item ctx-png-only" data-action="export-json">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    导出 JSON
+  </div>
+  <div class="context-menu-item ctx-png-only" data-action="import-json">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    导入 JSON
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="preview-modal-overlay" id="preview-modal">
+  <div class="preview-modal">
+    <div class="preview-modal-head">
+      <h2 id="pm-name">角色预览</h2>
+      <button class="btn ghost" id="btn-close-preview" title="关闭">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="preview-modal-body" id="pm-body"></div>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -966,6 +1190,10 @@ function renderPngEditor(item) {
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
               去水印
             </button>
+            <button class="btn ghost" id="btn-preview" title="角色预览">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              预览
+            </button>
             <button class="btn primary" id="btn-save" title="写回 PNG 的 tEXt 块">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               保存到 PNG
@@ -1041,6 +1269,7 @@ function renderPngEditor(item) {
   $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
   $('#btn-toggle-preview').addEventListener('click', togglePreview);
   $('#btn-toggle-preview2').addEventListener('click', togglePreview);
+  $('#btn-preview').addEventListener('click', openCharacterPreview);
 }
 
 function renderJsonEditor(item) {
@@ -1079,6 +1308,10 @@ function renderJsonEditor(item) {
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
               去水印
             </button>
+            <button class="btn ghost" id="btn-preview" title="角色预览">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              预览
+            </button>
             <button class="btn primary" id="btn-save" title="保存到 JSON 文件">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               保存
@@ -1106,6 +1339,7 @@ function renderJsonEditor(item) {
   $('#btn-save').addEventListener('click', () => saveJson());
   $('#btn-add-wm').addEventListener('click', () => addWatermark());
   $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
+  $('#btn-preview').addEventListener('click', openCharacterPreview);
 }
 
 function bindEditorCommon() {
@@ -1241,12 +1475,135 @@ function togglePreview() {
   if (container) container.classList.toggle('full', state.previewCollapsed);
 }
 
+/* ---------------- Character preview modal ---------------- */
+function extractUiTemplates(rawData) {
+  if (!rawData) return [];
+  const content = rawData?.data || rawData || {};
+  const candidates = [
+    content.uiTemplates,
+    content.ui_templates,
+    rawData.uiTemplates,
+    rawData.ui_templates,
+    content.extensions?.ui_templates,
+    content.extensions?.rp_hub_ui_templates,
+    rawData.extensions?.ui_templates,
+    rawData.extensions?.rp_hub_ui_templates,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length) return c;
+  }
+  return [];
+}
+
+function openCharacterPreview() {
+  const ta = $('#json-edit');
+  if (!ta) return;
+  let data;
+  try { data = JSON.parse(ta.value); } catch (e) { toast('JSON 无效，无法预览', 'err'); return; }
+  const root = data.data || data;
+  const name = root.name || root.char_name || '未命名角色';
+  const desc = root.description || '';
+  const personality = root.personality || '';
+  const firstMes = root.first_mes || '';
+  const mesExample = root.mes_example || '';
+  const creatorNotes = root.creator_notes || '';
+  const systemPrompt = root.system_prompt || '';
+  const postHistoryInstructions = root.post_history_instructions || '';
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+  const spec = root.spec || '—';
+  const hasWm = checkWatermark(data);
+  const uiTemplates = extractUiTemplates(data);
+
+  const decoHead = (label) =>
+    `<div class="pm-deco-head"><span class="pm-line"></span><span class="pm-label">${label}</span><span class="pm-line"></span></div>`;
+
+  let html = '';
+
+  if (desc) {
+    html += `<div class="pm-section">${decoHead('📝 描述')}<div class="pm-content">${renderMarkdown(desc)}</div></div>`;
+  }
+  if (personality) {
+    html += `<div class="pm-section">${decoHead('🧠 性格')}<div class="pm-content">${renderMarkdown(personality)}</div></div>`;
+  }
+  if (firstMes) {
+    html += `<div class="pm-section">${decoHead('💬 开场白')}<div class="pm-content">${renderMarkdown(firstMes)}</div></div>`;
+  }
+  if (mesExample) {
+    html += `<div class="pm-section">${decoHead('📋 对话示例')}<div class="pm-content">${renderMarkdown(mesExample)}</div></div>`;
+  }
+  if (creatorNotes) {
+    html += `<div class="pm-creator-notes"><div>${escapeHtml(creatorNotes)}</div></div>`;
+  }
+  if (systemPrompt) {
+    html += `<div class="pm-section">${decoHead('⚙️ 系统提示')}<div class="pm-content">${renderMarkdown(systemPrompt)}</div></div>`;
+  }
+  if (postHistoryInstructions) {
+    html += `<div class="pm-section">${decoHead('📌 历史记录指示')}<div class="pm-content">${renderMarkdown(postHistoryInstructions)}</div></div>`;
+  }
+  if (uiTemplates.length) {
+    let uiHtml = '';
+    for (const t of uiTemplates) {
+      const tName = t.name || t.title || '';
+      const tContent = t.htmlTemplate || t.template || t.html || t.content || t.markup || '';
+      uiHtml += `<div class="pm-ui-template">${tName ? `<div class="pm-ui-name">${escapeHtml(tName)}</div>` : ''}<div class="pm-content">${renderMarkdown(tContent)}</div></div>`;
+    }
+    if (uiHtml) html += `<div class="pm-section">${decoHead('🎨 原始模板UI')}${uiHtml}</div>`;
+  }
+  if (tags.length) {
+    html += `<div class="pm-section"><span class="pm-label" style="margin-bottom:10px;display:block;">🏷️ 标签</span><div class="pm-tags">${tags.map(t => `<span class="pm-tag">${escapeHtml(String(t))}</span>`).join('')}</div></div>`;
+  }
+  html += `<div class="pm-section" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);"><span class="pm-label" style="margin-bottom:10px;display:block;">ℹ️ 元数据</span><div class="pm-meta"><span>规范: ${escapeHtml(spec)}</span><span>水印: ${hasWm ? 'rp-hub ✓' : '未设置'}</span></div></div>`;
+
+  if (!desc && !personality && !firstMes && !mesExample && !creatorNotes && !systemPrompt && !postHistoryInstructions && !uiTemplates.length) {
+    html = `<div class="pm-section"><div class="pm-empty">该角色卡没有可供预览的文本内容。</div></div>`;
+  }
+
+  $('#pm-name').textContent = name;
+  $('#pm-body').innerHTML = html;
+  $('#preview-modal').classList.add('show');
+}
+
+function closeCharacterPreview() {
+  $('#preview-modal')?.classList.remove('show');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  const raw = String(text).trim();
+  if (!raw) return '';
+  try {
+    const html = DOMPurify.sanitize(marked.parse(raw, { breaks: true }), {
+      ADD_TAGS: ['details', 'summary'],
+      ADD_ATTR: ['style', 'class', 'open'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'style'],
+      FORBID_ATTR: ['onclick', 'onerror', 'onload', 'onmouseover', 'onfocus', 'oninput', 'onchange', 'srcdoc', 'sandbox'],
+      FORCE_BODY: true,
+    });
+    return html;
+  } catch (e) {
+    return escapeHtml(raw);
+  }
+}
+
+// close preview on overlay click and close button
+document.addEventListener('click', (e) => {
+  const modal = $('#preview-modal');
+  if (modal?.classList.contains('show') && e.target === modal) closeCharacterPreview();
+});
+$('#btn-close-preview')?.addEventListener('click', closeCharacterPreview);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeCharacterPreview();
+});
+
 /* ---------------- Context menu ---------------- */
 let contextNode = null;
 
 function showContextMenu(node, event) {
   const menu = $('#context-menu');
   contextNode = node;
+  // toggle PNG-only items
+  const isPng = node.type === 'file' && node.fileType === 'png';
+  menu.querySelectorAll('.ctx-png-only').forEach(el => el.classList.toggle('hidden', !isPng));
   menu.style.left = `${event.clientX}px`;
   menu.style.top = `${event.clientY}px`;
   menu.classList.add('show');
@@ -1277,6 +1634,8 @@ $('#context-menu')?.addEventListener('click', async (e) => {
     if (action === 'copy') await copyFileNode(node);
     else if (action === 'rename') await renameFileNode(node);
     else if (action === 'delete') await deleteFileNode(node);
+    else if (action === 'export-json') await contextExportJson(node);
+    else if (action === 'import-json') { contextImportJson(node); }
   } catch (err) {
     toast('操作失败: ' + err.message, 'err');
   }
@@ -1364,6 +1723,22 @@ async function deleteFileNode(node) {
   if (state.activeFile === node) { state.activeFile = null; state.originalJson = ''; renderEditor(); }
   toast(`已删除 ${node.name}`, 'ok');
   await scanAndBuild();
+}
+
+/* ---------------- Context menu PNG operations ---------------- */
+async function contextExportJson(node) {
+  if (node !== state.activeFile) {
+    await selectFile(node);
+  }
+  await exportPngJson();
+}
+
+function contextImportJson(node) {
+  if (node !== state.activeFile) {
+    selectFile(node).then(() => triggerImportJson());
+  } else {
+    triggerImportJson();
+  }
 }
 
 async function savePng() {
@@ -1493,15 +1868,16 @@ async function exportPngJson() {
   statusMsg.className = 'msg';
   statusMsg.textContent = '正在导出…';
   try {
+    const parentDir = node.parentHandle || state.dirHandle;
     let existing = null;
-    try { existing = await state.dirHandle.getFileHandle(outName); } catch (_) {}
+    try { existing = await parentDir.getFileHandle(outName); } catch (_) {}
     if (existing) {
       if (!confirm(`已存在 ${outName}，要覆盖吗？`)) {
         statusMsg.textContent = '';
         return;
       }
     }
-    const fh = await state.dirHandle.getFileHandle(outName, { create: true });
+    const fh = await parentDir.getFileHandle(outName, { create: true });
     const w = await fh.createWritable();
     await w.write(JSON.stringify(item.data, null, 2));
     await w.close();
@@ -1520,9 +1896,56 @@ async function exportPngJson() {
   }
 }
 
-function triggerImportJson() {
+async function triggerImportJson() {
+  const node = state.activeFile;
+  if (!node || node.fileType !== 'png') return;
+  const parentDir = node.parentHandle || state.dirHandle;
+  const baseName = node.name.replace(/\.png$/i, '');
+  const outName = baseName + '.json';
+
+  // check if same-named JSON exists in the same directory
+  let autoHandle = null;
+  try { autoHandle = await parentDir.getFileHandle(outName); } catch (_) {}
+
+  if (autoHandle) {
+    if (confirm(`检测到同名 JSON 文件「${outName}」，是否直接导入？\n\n点击「确定」导入同名文件\n点击「取消」手动选择文件`)) {
+      const statusMsg = $('#status-msg');
+      statusMsg.className = 'msg';
+      statusMsg.textContent = '正在读取导入文件…';
+      try {
+        const file = await autoHandle.getFile();
+        const text = await file.text();
+        applyImportedJson(text, outName);
+      } catch (e) {
+        toast('读取失败: ' + e.message, 'err');
+        if (statusMsg) { statusMsg.className = ''; statusMsg.textContent = ''; }
+      }
+      return;
+    }
+  }
+  // manual pick
   els.importFile.value = '';
   els.importFile.click();
+}
+
+function applyImportedJson(text, fileName) {
+  const statusMsg = $('#status-msg');
+  try {
+    const obj = JSON.parse(text);
+    const formatted = JSON.stringify(obj, null, 2);
+    const ta = $('#json-edit');
+    ta.value = formatted;
+    state.activeFile.item.data = obj;
+    state.dirty = true;
+    ta.dispatchEvent(new Event('input'));
+    statusMsg.className = 'msg warn';
+    statusMsg.textContent = `⚠ 已从 ${fileName} 载入，点击「保存到 PNG」写入`;
+    toast('已载入导入文件，请检查后保存', 'warn');
+  } catch (e) {
+    statusMsg.className = 'msg err';
+    statusMsg.textContent = '导入失败: ' + e.message;
+    toast('导入失败: ' + e.message, 'err');
+  }
 }
 
 els.importFile.addEventListener('change', async (e) => {
@@ -1530,25 +1953,12 @@ els.importFile.addEventListener('change', async (e) => {
   if (!file) return;
   const node = state.activeFile;
   if (!node || node.fileType !== 'png') return;
-
   const statusMsg = $('#status-msg');
   statusMsg.className = 'msg';
   statusMsg.textContent = '正在读取导入文件…';
   try {
     const text = await file.text();
-    const obj = JSON.parse(text);
-    const formatted = JSON.stringify(obj, null, 2);
-
-    const ta = $('#json-edit');
-    ta.value = formatted;
-    node.item.data = obj;
-    state.dirty = true;
-
-    ta.dispatchEvent(new Event('input'));
-
-    statusMsg.className = 'msg warn';
-    statusMsg.textContent = `⚠ 已从 ${file.name} 载入，点击「保存到 PNG」写入`;
-    toast('已载入导入文件，请检查后保存', 'warn');
+    applyImportedJson(text, file.name);
   } catch (e) {
     console.error(e);
     statusMsg.className = 'msg err';
