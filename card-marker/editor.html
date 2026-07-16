@@ -4,11 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Card Marker · 角色卡编辑器</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
   :root {
     --bg-0: #0b0d10;
@@ -42,7 +37,7 @@
     margin: 0;
     background: radial-gradient(1200px 800px at 20% -10%, #161a26 0%, var(--bg-0) 60%) fixed;
     color: var(--ink-0);
-    font-family: 'Noto Sans SC', 'Fraunces', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
@@ -74,7 +69,7 @@
   }
   .brand {
     display: flex; align-items: center; gap: 10px;
-    font-family: 'Fraunces', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-weight: 700;
     font-size: 18px;
     letter-spacing: -0.01em;
@@ -86,7 +81,7 @@
   }
   .brand .sub {
     color: var(--ink-2);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
     font-weight: 500;
     margin-left: 6px;
@@ -94,7 +89,7 @@
   }
   .path {
     flex: 1;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
     color: var(--ink-2);
     padding: 6px 12px;
@@ -166,7 +161,7 @@
     font-weight: 600;
   }
   .count {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
     color: var(--ink-3);
   }
@@ -221,7 +216,7 @@
     font-size: 13px;
   }
   .tree-row .badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.05em;
@@ -265,7 +260,7 @@
     padding: 40px;
   }
   .ws-empty h2 {
-    font-family: 'Fraunces', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-weight: 500;
     font-size: 24px;
     color: var(--ink-1);
@@ -276,7 +271,7 @@
   .ws-empty .features {
     display: flex; gap: 24px;
     margin-top: 18px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
     color: var(--ink-3);
     flex-wrap: wrap;
@@ -359,7 +354,7 @@
   }
   .meta-row + .meta-row { border-top: 1px dashed var(--line-soft); }
   .meta-row .k { color: var(--ink-2); }
-  .meta-row .v { color: var(--ink-0); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .meta-row .v { color: var(--ink-0); font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 11px; }
 
   .editor {
     display: flex;
@@ -376,7 +371,7 @@
   }
   .editor-title {
     display: flex; align-items: center; gap: 10px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
     color: var(--ink-1);
     min-width: 0;
@@ -398,7 +393,7 @@
     border: none;
     outline: none;
     padding: 18px 22px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12.5px;
     line-height: 1.65;
     resize: none;
@@ -410,7 +405,7 @@
     background: var(--bg-1);
     padding: 8px 18px;
     display: flex; align-items: center; justify-content: space-between;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 11px;
     color: var(--ink-2);
     min-height: 36px;
@@ -429,6 +424,99 @@
   .status-bar .dot.ok { background: var(--ok); }
   .status-bar .dot.err { background: var(--err); }
   .status-bar .dot.warn { background: var(--warn); }
+
+  /* Field editor */
+  .field-editor {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .field-group { margin-bottom: 18px; }
+  .field-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .field-hint {
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+    color: var(--ink-3); font-size: 10px; margin-left: 6px;
+  }
+  .field-input, .field-textarea {
+    width: 100%;
+    background: var(--bg-1);
+    color: var(--ink-0);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+  .field-input:focus, .field-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(139,92,246,0.1);
+  }
+  .field-input::placeholder, .field-textarea::placeholder { color: var(--ink-3); }
+  .field-textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .field-textarea.tall { min-height: 140px; }
+  .field-name { font-size: 16px; font-weight: 500; }
+  .field-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .field-list-item { display: flex; gap: 8px; align-items: flex-start; }
+  .field-list-item .field-textarea { flex: 1; }
+  .field-remove {
+    flex-shrink: 0; width: 34px; height: 34px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1; margin-top: 4px;
+  }
+  .field-add {
+    font-size: 12px; padding: 6px 12px;
+  }
+  .field-collapse {
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 8px;
+    background: var(--bg-0);
+  }
+  .field-collapse-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg-2);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-1);
+    transition: background 0.12s;
+  }
+  .field-collapse-head:hover { background: var(--bg-3); }
+  .field-collapse-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .field-collapse-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .field-collapse-arrow {
+    display: inline-block;
+    transition: transform 0.15s;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .field-collapse.open .field-collapse-arrow { transform: rotate(90deg); }
+  .field-collapse-body { display: none; padding: 14px; }
+  .field-collapse.open .field-collapse-body { display: block; }
 
   /* Toast */
   .toast {
@@ -460,7 +548,7 @@
     max-width: 520px;
     margin: 80px auto 0;
   }
-  .nope h1 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 28px; color: var(--ink-1); }
+  .nope h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 28px; color: var(--ink-1); }
   .nope code {
     background: var(--bg-2); padding: 2px 6px; border-radius: 4px; font-size: 12px;
     color: var(--accent);
@@ -533,7 +621,7 @@
     flex-shrink: 0;
   }
   .preview-modal-head h2 {
-    font-family: 'Fraunces', serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-weight: 600;
     font-size: 18px;
     color: var(--ink-0);
@@ -597,7 +685,7 @@
     font-size: 0.875em;
     font-weight: 600;
     color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   }
   .preview-modal-body .pm-content pre {
     background: var(--bg-0);
@@ -671,7 +759,7 @@
     gap: 16px;
     font-size: 12px;
     color: var(--ink-2);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   }
   .preview-modal-body .pm-empty {
     color: var(--ink-3);
@@ -1191,9 +1279,6 @@ function renderPngEditor(item) {
   const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
   state.originalJson = jsonText;
 
-  // Generate character preview HTML
-  const previewHtml = buildCharacterPreviewHtml(item.data);
-
   els.workspace.innerHTML = `
     <div class="ws-loaded" style="grid-template-columns:1fr;">
       <div class="editor" style="border-right:none;overflow:hidden;">
@@ -1217,13 +1302,12 @@ function renderPngEditor(item) {
             </button>
           </div>
         </div>
-        <div class="preview" style="border:none;padding:20px 24px;overflow-y:auto;flex:1;">
-          ${previewHtml}
-        </div>
+        ${buildFieldEditorHtml(item)}
       </div>
     </div>
   `;
 
+  bindFieldEditor(item);
   $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
   $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
   $('#btn-save').addEventListener('click', () => savePng());
@@ -1232,8 +1316,6 @@ function renderPngEditor(item) {
 function renderJsonEditor(item) {
   const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
   state.originalJson = jsonText;
-
-  const previewHtml = buildCharacterPreviewHtml(item.data);
 
   els.workspace.innerHTML = `
     <div class="ws-loaded" style="grid-template-columns:1fr;">
@@ -1258,13 +1340,12 @@ function renderJsonEditor(item) {
             </button>
           </div>
         </div>
-        <div class="preview" style="border:none;padding:20px 24px;overflow-y:auto;flex:1;">
-          ${previewHtml}
-        </div>
+        ${buildFieldEditorHtml(item)}
       </div>
     </div>
   `;
 
+  bindFieldEditor(item);
   $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
   $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
   $('#btn-save').addEventListener('click', () => saveJson());
@@ -1523,6 +1604,238 @@ document.addEventListener('keydown', (e) => {
 
 $('#prop-btn-close')?.addEventListener('click', closePropertiesModal);
 
+/* ---------------- Field editor (inline editable form) ---------------- */
+function getUiTemplatesArray(data) {
+  if (!data) return null;
+  const root = data.data || data;
+  if (Array.isArray(root.uiTemplates)) return root.uiTemplates;
+  if (Array.isArray(root.ui_templates)) return root.ui_templates;
+  if (Array.isArray(data.uiTemplates)) return data.uiTemplates;
+  if (Array.isArray(data.ui_templates)) return data.ui_templates;
+  const ext = root.extensions || data.extensions;
+  if (ext) {
+    if (Array.isArray(ext.ui_templates)) return ext.ui_templates;
+    if (Array.isArray(ext.rp_hub_ui_templates)) return ext.rp_hub_ui_templates;
+  }
+  return null;
+}
+
+function ensureUiTemplatesArray(data) {
+  let arr = getUiTemplatesArray(data);
+  if (arr) return arr;
+  const root = data.data || data;
+  root.uiTemplates = [];
+  return root.uiTemplates;
+}
+
+const EDITOR_FIELDS = [
+  { key: 'name', label: '名称', type: 'input', cls: 'field-name' },
+  { key: 'description', label: '描述', type: 'textarea', cls: 'tall' },
+  { key: 'personality', label: '性格', type: 'textarea', cls: '' },
+  { key: 'first_mes', label: '开场白', type: 'textarea', cls: 'tall' },
+  { key: 'mes_example', label: '对话示例', type: 'textarea', cls: 'tall' },
+  { key: 'creator_notes', label: '作者备注', type: 'textarea', cls: '' },
+  { key: 'system_prompt', label: '系统提示', type: 'textarea', cls: '' },
+  { key: 'post_history_instructions', label: '历史记录指示', type: 'textarea', cls: '' },
+];
+
+function buildFieldEditorHtml(item) {
+  const data = item.data;
+  if (!data) return '<div class="nope"><h1>∅</h1><p>该文件没有可编辑的角色数据。</p></div>';
+  const root = data.data || data;
+
+  let html = '<div class="field-editor">';
+
+  for (const f of EDITOR_FIELDS) {
+    const val = root[f.key] != null ? String(root[f.key]) : '';
+    if (f.type === 'input') {
+      html += `<div class="field-group"><label class="field-label">${f.label}</label><input class="field-input ${f.cls || ''}" data-field="${f.key}" type="text" value="${escapeHtml(val)}" /></div>`;
+    } else {
+      html += `<div class="field-group"><label class="field-label">${f.label}</label><textarea class="field-textarea ${f.cls || ''}" data-field="${f.key}">${escapeHtml(val)}</textarea></div>`;
+    }
+  }
+
+  // Tags
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+  html += `<div class="field-group"><label class="field-label">标签<span class="field-hint">逗号分隔</span></label><input class="field-input" data-field="tags" type="text" value="${escapeHtml(tags.join(', '))}" /></div>`;
+
+  // Alternate greetings
+  const greetings = Array.isArray(root.alternate_greetings) ? root.alternate_greetings : [];
+  html += `<div class="field-group"><label class="field-label">额外开场白<span class="field-hint">可添加多个</span></label><div class="field-list" id="greetings-list">`;
+  greetings.forEach((g, i) => {
+    html += `<div class="field-list-item"><textarea class="field-textarea" data-field="alternate_greetings" data-index="${i}">${escapeHtml(String(g || ''))}</textarea><button class="btn ghost field-remove" data-remove-greeting="${i}" title="删除">✕</button></div>`;
+  });
+  html += `</div><button class="btn ghost field-add" id="btn-add-greeting">+ 添加开场白</button></div>`;
+
+  // uiTemplates
+  const uiTemplates = getUiTemplatesArray(data) || [];
+  html += `<div class="field-group"><label class="field-label">UI 模板<span class="field-hint">点击展开编辑</span></label><div id="ui-templates-list">`;
+  uiTemplates.forEach((t, i) => {
+    const tName = t.name || t.title || '';
+    const tHtml = t.htmlTemplate || t.template || t.html || t.content || '';
+    const tInit = t.initialVariableState ? JSON.stringify(t.initialVariableState, null, 2) : '';
+    const tSchema = t.variableSchema || '';
+    html += `<div class="field-collapse" data-ui-index="${i}">
+      <div class="field-collapse-head">
+        <span class="field-collapse-title">${escapeHtml(tName) || '未命名模板'}</span>
+        <div class="field-collapse-actions">
+          <span class="field-collapse-arrow">▶</span>
+          <button class="btn ghost field-remove" data-remove-ui="${i}" title="删除">✕</button>
+        </div>
+      </div>
+      <div class="field-collapse-body">
+        <div class="field-group"><label class="field-label">名称</label>
+          <input class="field-input" data-ui-field="name" data-ui-index="${i}" type="text" value="${escapeHtml(tName)}" /></div>
+        <div class="field-group"><label class="field-label">HTML 模板</label>
+          <textarea class="field-textarea tall" data-ui-field="htmlTemplate" data-ui-index="${i}" style="min-height:200px;">${escapeHtml(tHtml)}</textarea></div>
+        <div class="field-group"><label class="field-label">初始变量状态 (JSON)</label>
+          <textarea class="field-textarea tall" data-ui-field="initialVariableState" data-ui-index="${i}">${escapeHtml(tInit)}</textarea></div>
+        <div class="field-group"><label class="field-label">变量 Schema</label>
+          <textarea class="field-textarea tall" data-ui-field="variableSchema" data-ui-index="${i}">${escapeHtml(tSchema)}</textarea></div>
+      </div>
+    </div>`;
+  });
+  html += `</div><button class="btn ghost field-add" id="btn-add-ui">+ 添加 UI 模板</button></div>`;
+
+  html += '</div>';
+  return html;
+}
+
+function markFieldDirty() {
+  state.dirty = true;
+  const item = state.activeFile?.item;
+  if (item?.data) {
+    state.originalJson = JSON.stringify(item.data, null, 2);
+  }
+  window.onbeforeunload = (e) => { e.preventDefault(); e.returnValue = ''; };
+}
+
+function bindFieldEditor(item) {
+  const root = item.data?.data || item.data;
+  if (!root) return;
+
+  // Bind text/textarea fields
+  document.querySelectorAll('[data-field]').forEach(el => {
+    const field = el.dataset.field;
+    if (field === 'alternate_greetings') return; // handled separately
+
+    el.addEventListener('input', () => {
+      if (field === 'tags') {
+        root.tags = el.value.split(',').map(t => t.trim()).filter(Boolean);
+      } else {
+        root[field] = el.value;
+      }
+      markFieldDirty();
+    });
+  });
+
+  // Bind alternate_greetings textareas
+  document.querySelectorAll('[data-field="alternate_greetings"]').forEach(el => {
+    const idx = parseInt(el.dataset.index, 10);
+    el.addEventListener('input', () => {
+      if (Array.isArray(root.alternate_greetings) && idx < root.alternate_greetings.length) {
+        root.alternate_greetings[idx] = el.value;
+        markFieldDirty();
+      }
+    });
+  });
+
+  // Bind remove greeting buttons
+  document.querySelectorAll('[data-remove-greeting]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.removeGreeting, 10);
+      if (Array.isArray(root.alternate_greetings)) {
+        root.alternate_greetings.splice(idx, 1);
+        if (root.alternate_greetings.length === 0) delete root.alternate_greetings;
+        markFieldDirty();
+        renderFieldEditorOnly(item);
+      }
+    });
+  });
+
+  // Bind add greeting button
+  const addBtn = document.getElementById('btn-add-greeting');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      if (!Array.isArray(root.alternate_greetings)) root.alternate_greetings = [];
+      root.alternate_greetings.push('');
+      markFieldDirty();
+      renderFieldEditorOnly(item);
+    });
+  }
+
+  // Bind uiTemplates collapse toggles
+  document.querySelectorAll('.field-collapse-head').forEach(head => {
+    head.addEventListener('click', (e) => {
+      if (e.target.closest('[data-remove-ui]')) return;
+      head.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Bind uiTemplates field edits
+  const uiTemplates = getUiTemplatesArray(item.data);
+  if (uiTemplates) {
+    document.querySelectorAll('[data-ui-field]').forEach(el => {
+      const idx = parseInt(el.dataset.uiIndex, 10);
+      const field = el.dataset.uiField;
+      el.addEventListener('input', () => {
+        if (!uiTemplates[idx]) return;
+        if (field === 'initialVariableState') {
+          try { uiTemplates[idx].initialVariableState = JSON.parse(el.value); }
+          catch (e) { /* invalid JSON, keep old value */ }
+        } else {
+          uiTemplates[idx][field] = el.value;
+        }
+        markFieldDirty();
+        // Update collapse header when name changes
+        if (field === 'name') {
+          const title = el.closest('.field-collapse')?.querySelector('.field-collapse-title');
+          if (title) title.textContent = el.value || '未命名模板';
+        }
+      });
+    });
+
+    // Bind remove uiTemplate buttons
+    document.querySelectorAll('[data-remove-ui]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.removeUi, 10);
+        uiTemplates.splice(idx, 1);
+        markFieldDirty();
+        renderFieldEditorOnly(item);
+      });
+    });
+  }
+
+  // Bind add uiTemplate button
+  const addUiBtn = document.getElementById('btn-add-ui');
+  if (addUiBtn) {
+    addUiBtn.addEventListener('click', () => {
+      const arr = ensureUiTemplatesArray(item.data);
+      arr.push({
+        id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)),
+        name: '新模板',
+        htmlTemplate: '',
+        initialVariableState: {},
+        variableSchema: '',
+      });
+      markFieldDirty();
+      renderFieldEditorOnly(item);
+      // Auto-open the newly added template
+      const last = document.querySelector('.field-collapse:last-child');
+      if (last) last.classList.add('open');
+    });
+  }
+}
+
+// Re-render only the field editor part (preserves header)
+function renderFieldEditorOnly(item) {
+  const container = document.querySelector('.field-editor');
+  if (container) {
+    container.outerHTML = buildFieldEditorHtml(item);
+    bindFieldEditor(item);
+  }
+}
+
 /* ---------------- Workspace character preview HTML builder ---------------- */
 function extractUiTemplates(rawData) {
   if (!rawData) return [];
@@ -1560,7 +1873,7 @@ function buildCharacterPreviewHtml(data) {
   const decoHead = (label) =>
     `<div class="pm-deco-head"><span class="pm-line"></span><span class="pm-label">${label}</span><span class="pm-line"></span></div>`;
 
-  let html = `<div class="pm-section" style="margin-bottom:8px;"><h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:24px;color:var(--ink-0);margin:0 0 4px;letter-spacing:-0.01em;">${escapeHtml(name)}</h2></div>`;
+  let html = `<div class="pm-section" style="margin-bottom:8px;"><h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:24px;color:var(--ink-0);margin:0 0 4px;letter-spacing:-0.01em;">${escapeHtml(name)}</h2></div>`;
 
   if (desc) html += `<div class="pm-section">${decoHead('描述')}<div class="pm-content">${renderMarkdown(desc)}</div></div>`;
   if (personality) html += `<div class="pm-section">${decoHead('性格')}<div class="pm-content">${renderMarkdown(personality)}</div></div>`;
@@ -1595,18 +1908,101 @@ function renderMarkdown(text) {
   if (!text) return '';
   const raw = String(text).trim();
   if (!raw) return '';
-  try {
-    const html = DOMPurify.sanitize(marked.parse(raw, { breaks: true }), {
-      ADD_TAGS: ['details', 'summary'],
-      ADD_ATTR: ['style', 'class', 'open'],
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'style'],
-      FORBID_ATTR: ['onclick', 'onerror', 'onload', 'onmouseover', 'onfocus', 'oninput', 'onchange', 'srcdoc', 'sandbox'],
-      FORCE_BODY: true,
-    });
-    return html;
-  } catch (e) {
-    return escapeHtml(raw);
+
+  // Escape HTML first for safety (no external sanitizer needed)
+  let lines = raw.split('\n');
+  let html = '';
+  let inUl = false, inOl = false, inBlockquote = false, inCode = false;
+  let codeLines = [];
+
+  const inline = (s) => {
+    let t = escapeHtml(s);
+    // inline code
+    t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // bold
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    // italic
+    t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    t = t.replace(/_([^_]+)_/g, '<em>$1</em>');
+    // links [text](url)
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return t;
+  };
+
+  const closeLists = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+    if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // code block fence
+    if (line.trim().startsWith('```')) {
+      if (!inCode) {
+        closeLists();
+        inCode = true;
+        codeLines = [];
+      } else {
+        html += '<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        inCode = false;
+      }
+      continue;
+    }
+    if (inCode) { codeLines.push(line); continue; }
+
+    // blank line
+    if (line.trim() === '') {
+      closeLists();
+      continue;
+    }
+
+    // headers
+    const hMatch = line.match(/^(#{1,4})\s+(.*)$/);
+    if (hMatch) {
+      closeLists();
+      const level = hMatch[1].length;
+      html += `<h${level}>${inline(hMatch[2])}</h${level}>`;
+      continue;
+    }
+
+    // blockquote
+    if (line.startsWith('>')) {
+      if (!inBlockquote) { closeLists(); html += '<blockquote>'; inBlockquote = true; }
+      html += inline(line.replace(/^>\s?/, '')) + ' ';
+      continue;
+    } else if (inBlockquote) {
+      html += '</blockquote>';
+      inBlockquote = false;
+    }
+
+    // unordered list
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
+      html += '<li>' + inline(line.replace(/^\s*[-*]\s+/, '')) + '</li>';
+      continue;
+    }
+
+    // ordered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
+      html += '<li>' + inline(line.replace(/^\s*\d+\.\s+/, '')) + '</li>';
+      continue;
+    }
+
+    // normal paragraph line (breaks: true → single newlines become <br>)
+    closeLists();
+    html += '<p>' + inline(line) + '</p>';
   }
+
+  closeLists();
+  if (inCode) {
+    html += '<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+  }
+
+  return html;
 }
 
 /* ---------------- Context menu ---------------- */
