@@ -297,7 +297,7 @@
     grid-template-columns: 1fr;
   }
   .preview {
-    border-left: 1px solid var(--line-soft);
+    border-right: 1px solid var(--line-soft);
     padding: 20px;
     overflow-y: auto;
     background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
@@ -763,6 +763,10 @@
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
     重命名
   </div>
+  <div class="context-menu-item" data-action="properties">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    属性
+  </div>
   <div class="context-menu-sep"></div>
   <div class="context-menu-item" data-action="delete" style="color:var(--err);">
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -781,15 +785,58 @@
 
 <div class="toast" id="toast"></div>
 
-<div class="preview-modal-overlay" id="preview-modal">
-  <div class="preview-modal">
+<div class="preview-modal-overlay" id="json-edit-modal">
+  <div class="preview-modal" style="width:92vw;max-width:1400px;height:88vh;">
     <div class="preview-modal-head">
-      <h2 id="pm-name">角色预览</h2>
-      <button class="btn ghost" id="btn-close-preview" title="关闭">
+      <h2 id="jem-title">编辑 JSON</h2>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost" id="jem-btn-format" title="格式化">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
+          格式化
+        </button>
+        <button class="btn ghost" id="jem-btn-revert" title="还原">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          还原
+        </button>
+        <button class="btn" id="jem-btn-wm" title="添加 rp-hub 水印">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          水印
+        </button>
+        <button class="btn primary" id="jem-btn-save" title="保存修改">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          保存
+        </button>
+        <button class="btn ghost" id="jem-btn-close" title="关闭">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="preview-modal-body" style="display:flex;flex-direction:column;padding:0;">
+      <textarea class="json-edit" id="jem-textarea" spellcheck="false" style="flex:1;min-height:0;border:none;border-radius:0;"></textarea>
+      <div class="status-bar" style="border-top:1px solid var(--line-soft);border-radius:0 0 16px 16px;flex-shrink:0;">
+        <div class="left">
+          <div class="indicator"><span class="dot" id="jem-valid-dot"></span><span id="jem-valid-text">—</span></div>
+          <div class="indicator"><span class="dot" id="jem-wm-dot"></span><span id="jem-wm-text">—</span></div>
+          <div class="msg" id="jem-status-msg"></div>
+        </div>
+        <div class="right">
+          <span id="jem-char-count">0 字符</span>
+          <span id="jem-line-count">0 行</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="preview-modal-overlay" id="properties-modal">
+  <div class="preview-modal" style="max-width:520px;">
+    <div class="preview-modal-head">
+      <h2 id="prop-title">属性</h2>
+      <button class="btn ghost" id="prop-btn-close" title="关闭">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="preview-modal-body" id="pm-body"></div>
+    <div class="preview-modal-body" id="prop-body"></div>
   </div>
 </div>
 
@@ -813,7 +860,6 @@ const state = {
   loading: false,
   dirty: false,
   originalJson: '',
-  previewCollapsed: false,
   saving: false,
 };
 
@@ -1142,57 +1188,28 @@ function renderEditor() {
 }
 
 function renderPngEditor(item) {
-  const root = item.data?.data || item.data || {};
-  const spec = root.spec || '—';
-  const charName = root.name || '—';
-  const sizeKb = (item.fileSize / 1024).toFixed(1);
-  const hasWm = item.hasWatermark;
-  const hasErr = item.hasError;
-  const tags = root.tags || [];
-  const tagHtml = Array.isArray(tags) && tags.length
-    ? tags.slice(0, 4).map(t => `<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">${escapeHtml(String(t))}</span>`).join(' ')
-    : '<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">无标签</span>';
-
-  const imgSrc = item.pngBytes
-    ? URL.createObjectURL(new Blob([item.pngBytes], { type: 'image/png' }))
-    : '';
   const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
   state.originalJson = jsonText;
 
+  // Generate character preview HTML
+  const previewHtml = buildCharacterPreviewHtml(item.data);
+
   els.workspace.innerHTML = `
-    <div class="ws-loaded${state.previewCollapsed ? ' full' : ''}">
-      <div class="editor">
+    <div class="ws-loaded" style="grid-template-columns:1fr;">
+      <div class="editor" style="border-right:none;overflow:hidden;">
         <div class="editor-head">
           <div class="editor-title png">
             <span class="file-ico">{ chara }</span>
-            <span class="fname">${escapeHtml(item.name)} · tEXt 内容</span>
+            <span class="fname">${escapeHtml(item.name)}</span>
           </div>
           <div class="editor-actions">
-            <button class="btn ghost" id="btn-toggle-preview" title="${state.previewCollapsed ? '显示预览' : '隐藏预览'}">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${state.previewCollapsed
-                ? '<path d="M15 3l-9 9 9 9"/>'
-                : '<path d="M9 3l9 9-9 9"/>'}</svg>
-              ${state.previewCollapsed ? '预览' : ''}
+            <button class="btn ghost" id="btn-edit-json" title="编辑 JSON">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              编辑json
             </button>
-            <button class="btn ghost" id="btn-format" title="格式化 JSON">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
-              格式化
-            </button>
-            <button class="btn ghost" id="btn-revert" title="还原">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-              还原
-            </button>
-            <button class="btn" id="btn-add-wm" title="添加 rp-hub 水印">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-              水印
-            </button>
-            <button class="btn" id="btn-rm-wm" title="去除 rp-hub 水印">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
-              去水印
-            </button>
-            <button class="btn ghost" id="btn-preview" title="角色预览">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-              预览
+            <button class="btn ghost" id="btn-show-props" title="属性">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              属性
             </button>
             <button class="btn primary" id="btn-save" title="写回 PNG 的 tEXt 块">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -1200,117 +1217,40 @@ function renderPngEditor(item) {
             </button>
           </div>
         </div>
-        <textarea class="json-edit" id="json-edit" spellcheck="false" placeholder="PNG 中没有 chara 数据">${escapeHtml(jsonText)}</textarea>
-          <div class="status-bar">
-          <div class="left">
-            <div class="indicator"><span class="dot" id="valid-dot"></span><span id="valid-text">—</span></div>
-            <div class="indicator"><span class="dot" id="wm-dot"></span><span id="wm-text">—</span></div>
-            <div class="msg" id="status-msg"></div>
-          </div>
-          <div class="right">
-            <span id="char-count">0 字符</span>
-            <span id="line-count">0 行</span>
-          </div>
-        </div>
-      </div>
-      <div class="preview${state.previewCollapsed ? ' collapsed' : ''}" id="preview-panel">
-        <div class="preview-head">
-          <span class="preview-title">预览</span>
-          <button class="btn ghost" id="btn-toggle-preview2" title="隐藏预览">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3l9 9-9 9"/></svg>
-          </button>
-        </div>
-        <div class="frame">
-          ${imgSrc
-            ? `<img id="png-preview" src="${imgSrc}" alt="preview" />`
-            : '<div style="padding:40px;text-align:center;color:var(--ink-3);">无图像数据</div>'}
-        </div>
-        <div class="meta-card">
-          <h3>PNG 信息</h3>
-          <div class="meta-row"><span class="k">路径</span><span class="v" style="text-align:right;word-break:break-all;max-width:60%;">${escapeHtml(state.activeFile.path)}</span></div>
-          <div class="meta-row"><span class="k">大小</span><span class="v">${sizeKb} KB</span></div>
-          <div class="meta-row"><span class="k">角色名</span><span class="v">${escapeHtml(charName)}</span></div>
-          <div class="meta-row"><span class="k">规范</span><span class="v">${escapeHtml(spec)}</span></div>
-          <div class="meta-row"><span class="k">水印</span><span class="v">${
-            hasErr ? '<span class="badge err">chara 缺失</span>'
-            : hasWm ? '<span class="badge ok">rp-hub ✓</span>'
-            : '<span class="badge warn">未设置</span>'}</span></div>
-          <div class="meta-row" style="display:block">
-            <span class="k" style="display:block;margin-bottom:6px;">标签</span>
-            <span class="v" style="display:flex;flex-wrap:wrap;gap:4px;">${tagHtml}</span>
-          </div>
-        </div>
-        <div class="meta-card" style="border-style:dashed;">
-          <h3>PNG 专属操作</h3>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <button class="btn png-btn" id="btn-export-json" style="justify-content:flex-start;">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              导出 JSON 文件
-            </button>
-            <button class="btn png-btn" id="btn-import-json" style="justify-content:flex-start;">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              导入 JSON 覆盖
-            </button>
-            <div style="font-size:11px;color:var(--ink-3);line-height:1.6;margin-top:4px;padding:0 4px;">
-              <div>· 导出：将 PNG 内 chara 写入同目录 <code style="background:var(--bg-2);padding:1px 4px;border-radius:3px;">同文件名.json</code></div>
-              <div>· 导入：从任意 <code style="background:var(--bg-2);padding:1px 4px;border-radius:3px;">.json</code> 读入，载入到左侧编辑器（点保存回写 PNG）</div>
-            </div>
-          </div>
+        <div class="preview" style="border:none;padding:20px 24px;overflow-y:auto;flex:1;">
+          ${previewHtml}
         </div>
       </div>
     </div>
   `;
 
-  bindEditorCommon();
+  $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
+  $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
   $('#btn-save').addEventListener('click', () => savePng());
-  $('#btn-export-json').addEventListener('click', () => exportPngJson());
-  $('#btn-import-json').addEventListener('click', () => triggerImportJson());
-  $('#btn-add-wm').addEventListener('click', () => addWatermark());
-  $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
-  $('#btn-toggle-preview').addEventListener('click', togglePreview);
-  $('#btn-toggle-preview2').addEventListener('click', togglePreview);
-  $('#btn-preview').addEventListener('click', openCharacterPreview);
 }
 
 function renderJsonEditor(item) {
-  const root = item.data?.data || item.data || {};
-  const spec = root.spec || '—';
-  const charName = root.name || '—';
-  const sizeKb = (item.fileSize / 1024).toFixed(1);
-  const hasWm = checkWatermark(item.data);
-  const hasErr = item.hasError;
-
   const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
   state.originalJson = jsonText;
 
+  const previewHtml = buildCharacterPreviewHtml(item.data);
+
   els.workspace.innerHTML = `
-    <div class="ws-loaded full">
-      <div class="editor" style="border-right:none;">
+    <div class="ws-loaded" style="grid-template-columns:1fr;">
+      <div class="editor" style="border-right:none;overflow:hidden;">
         <div class="editor-head">
           <div class="editor-title json">
             <span class="file-ico">{ }</span>
             <span class="fname">${escapeHtml(item.name)}</span>
           </div>
           <div class="editor-actions">
-            <button class="btn ghost" id="btn-format" title="格式化 JSON">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
-              格式化
+            <button class="btn ghost" id="btn-edit-json" title="编辑 JSON">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              编辑json
             </button>
-            <button class="btn ghost" id="btn-revert" title="还原">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-              还原
-            </button>
-            <button class="btn" id="btn-add-wm" title="添加 rp-hub 水印">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-              水印
-            </button>
-            <button class="btn" id="btn-rm-wm" title="去除 rp-hub 水印">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/><line x1="18" y1="4" x2="6" y2="20"/></svg>
-              去水印
-            </button>
-            <button class="btn ghost" id="btn-preview" title="角色预览">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-              预览
+            <button class="btn ghost" id="btn-show-props" title="属性">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              属性
             </button>
             <button class="btn primary" id="btn-save" title="保存到 JSON 文件">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -1318,62 +1258,183 @@ function renderJsonEditor(item) {
             </button>
           </div>
         </div>
-        <textarea class="json-edit" id="json-edit" spellcheck="false" ${hasErr ? 'placeholder="JSON 解析失败"' : ''}>${escapeHtml(jsonText)}</textarea>
-          <div class="status-bar">
-          <div class="left">
-            <div class="indicator"><span class="dot" id="valid-dot"></span><span id="valid-text">—</span></div>
-            <div class="indicator"><span class="dot" id="wm-dot"></span><span id="wm-text">—</span></div>
-            <div class="msg" id="status-msg"></div>
-            <span style="color:var(--ink-3);">路径: <code style="background:var(--bg-2);padding:1px 5px;border-radius:3px;">${escapeHtml(state.activeFile.path)}</code> · 规范: ${escapeHtml(spec)} · 角色: ${escapeHtml(charName)}</span>
-          </div>
-          <div class="right">
-            <span id="char-count">0 字符</span>
-            <span id="line-count">0 行</span>
-          </div>
+        <div class="preview" style="border:none;padding:20px 24px;overflow-y:auto;flex:1;">
+          ${previewHtml}
         </div>
       </div>
     </div>
   `;
 
-  bindEditorCommon();
+  $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
+  $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
   $('#btn-save').addEventListener('click', () => saveJson());
-  $('#btn-add-wm').addEventListener('click', () => addWatermark());
-  $('#btn-rm-wm').addEventListener('click', () => removeWatermark());
-  $('#btn-preview').addEventListener('click', openCharacterPreview);
 }
 
-function bindEditorCommon() {
-  const ta = $('#json-edit');
-  const validDot = $('#valid-dot');
-  const validText = $('#valid-text');
-  const wmDot = $('#wm-dot');
-  const wmText = $('#wm-text');
-  const charCount = $('#char-count');
-  const lineCount = $('#line-count');
-  const statusMsg = $('#status-msg');
-  const addBtn = $('#btn-add-wm');
-  const rmBtn = $('#btn-rm-wm');
+/* ---------------- Save flows ---------------- */
+function ensureWatermark(jsonData) {
+  const root = jsonData.data || jsonData;
+  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+  if (!root.extensions.rp_hub_watermark) root.extensions.rp_hub_watermark = 'rp-hub';
+  if (jsonData.data) jsonData.data = root;
+  return jsonData;
+}
+
+function showFileProperties(node) {
+  if (!node || node.type === 'dir') return;
+  const isPng = node.fileType === 'png';
+  const item = node.item;
+  if (!item) { toast('文件尚未加载', 'warn'); return; }
+  const root = item.data?.data || item.data || {};
+  const spec = root.spec || '—';
+  const charName = root.name || '—';
+  const sizeKb = (item.fileSize / 1024).toFixed(1);
+  const hasErr = item.hasError;
+  const hasWm = isPng ? item.hasWatermark : checkWatermark(item.data);
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+
+  let html = '';
+  // Image for PNG
+  if (isPng && item.pngBytes) {
+    const src = URL.createObjectURL(new Blob([item.pngBytes], { type: 'image/png' }));
+    html += `<div class="frame" style="margin-bottom:16px;"><img src="${src}" alt="preview" style="display:block;width:100%;" /></div>`;
+  }
+  html += `<div class="meta-card"><h3>文件属性</h3>
+    <div class="meta-row"><span class="k">路径</span><span class="v" style="text-align:right;word-break:break-all;max-width:60%;">${escapeHtml(node.path)}</span></div>
+    <div class="meta-row"><span class="k">类型</span><span class="v">${isPng ? 'PNG (tEXt chara)' : 'JSON'}</span></div>
+    <div class="meta-row"><span class="k">大小</span><span class="v">${sizeKb} KB</span></div>
+    <div class="meta-row"><span class="k">角色名</span><span class="v">${escapeHtml(charName)}</span></div>
+    <div class="meta-row"><span class="k">规范</span><span class="v">${escapeHtml(spec)}</span></div>
+    <div class="meta-row"><span class="k">水印</span><span class="v">${
+      hasErr ? '<span class="badge err">chara 缺失</span>'
+      : hasWm ? '<span class="badge ok">rp-hub ✓</span>'
+      : '<span class="badge warn">未设置</span>'}</span></div>`;
+  if (tags.length) {
+    html += `<div class="meta-row" style="display:block"><span class="k" style="display:block;margin-bottom:6px;">标签</span>
+      <span class="v" style="display:flex;flex-wrap:wrap;gap:4px;">${tags.map(t => `<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">${escapeHtml(String(t))}</span>`).join(' ')}</span></div>`;
+  }
+  html += `</div>`;
+
+  if (isPng) {
+    html += `<div class="meta-card" style="border-style:dashed;"><h3>PNG 操作</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn png-btn" id="prop-export-json" style="justify-content:flex-start;">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          导出 JSON 文件
+        </button>
+        <button class="btn png-btn" id="prop-import-json" style="justify-content:flex-start;">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          导入 JSON 覆盖
+        </button>
+      </div></div>`;
+  }
+
+  $('#prop-title').textContent = `${isPng ? 'PNG' : 'JSON'} 属性 — ${escapeHtml(node.name)}`;
+  $('#prop-body').innerHTML = html;
+  $('#properties-modal').classList.add('show');
+
+  // Bind png action buttons inside properties modal
+  const exportBtn = $('#prop-export-json');
+  if (exportBtn) exportBtn.addEventListener('click', () => { closePropertiesModal(); exportPngJson(); });
+  const importBtn = $('#prop-import-json');
+  if (importBtn) importBtn.addEventListener('click', () => { closePropertiesModal(); triggerImportJson(); });
+}
+
+function closePropertiesModal() {
+  $('#properties-modal')?.classList.remove('show');
+}
+
+/* ---------------- JSON Editor Modal ---------------- */
+function openJsonEditorModal() {
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  ta.value = state.originalJson;
+  $('#json-edit-modal').classList.add('show');
+  bindJsonEditorModal();
+  ta.setSelectionRange(0, 0);
+  ta.focus();
+  ta.dispatchEvent(new Event('input'));
+}
+
+function closeJsonEditorModal() {
+  $('#json-edit-modal')?.classList.remove('show');
+}
+
+async function saveJsonFromModal() {
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(ta.value);
+  } catch (e) {
+    ta.style.boxShadow = '0 0 0 2px var(--err)';
+    toast('JSON 校验失败: ' + e.message, 'err', 4000);
+    return;
+  }
+  ta.style.boxShadow = '';
+  const item = state.activeFile?.item;
+  if (!item) { toast('没有活动的文件', 'err'); return; }
+  const isPng = item.type === 'png';
+  try {
+    if (isPng) {
+      const jsonData = ensureWatermark(parsed);
+      const finalText = JSON.stringify(jsonData, null, 2);
+      const payload = encodeBase64Utf8(JSON.stringify(jsonData));
+      const newPng = injectPngTextChunk(item.pngBytes, 'chara', payload);
+      const w = await item.handle.createWritable();
+      await w.write(newPng);
+      await w.close();
+      item.pngBytes = newPng;
+      item.data = jsonData;
+      item.hasWatermark = checkWatermark(jsonData);
+      item.fileSize = newPng.length;
+      state.originalJson = finalText;
+    } else {
+      const finalText = JSON.stringify(parsed, null, 2);
+      const w = await item.handle.createWritable();
+      await w.write(finalText);
+      await w.close();
+      item.data = parsed;
+      item.hasError = false;
+      item.fileSize = new Blob([finalText]).size;
+      state.originalJson = finalText;
+    }
+    state.dirty = false;
+    closeJsonEditorModal();
+    renderEditor(state.activeFile?.item);
+    if (!isPng) renderTree();
+    toast(isPng ? '已保存到 PNG ✓' : '已保存 JSON 文件', 'ok');
+  } catch (err) {
+    toast('保存失败: ' + err.message, 'err');
+  }
+}
+
+function bindJsonEditorModal() {
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  const validDot = $('#jem-valid-dot');
+  const validText = $('#jem-valid-text');
+  const wmDot = $('#jem-wm-dot');
+  const wmText = $('#jem-wm-text');
+  const charCount = $('#jem-char-count');
+  const lineCount = $('#jem-line-count');
+  const statusMsg = $('#jem-status-msg');
 
   function updateStatus() {
+    ta.style.boxShadow = '';
     const txt = ta.value;
     charCount.textContent = `${txt.length.toLocaleString()} 字符`;
     lineCount.textContent = `${txt.split('\n').length} 行`;
-    state.dirty = txt !== state.originalJson;
     let isValid = false;
     let hasWm = false;
     try {
       const parsed = JSON.parse(txt);
       isValid = true;
-      ta.classList.remove('invalid');
       validDot.className = 'dot ok';
       validText.textContent = 'JSON 有效';
-      $('#btn-save').disabled = false;
       hasWm = checkWatermark(parsed);
     } catch (e) {
-      ta.classList.add('invalid');
       validDot.className = 'dot err';
       validText.textContent = 'JSON 错误: ' + e.message;
-      $('#btn-save').disabled = true;
     }
     if (isValid && hasWm) {
       wmDot.className = 'dot ok';
@@ -1385,9 +1446,6 @@ function bindEditorCommon() {
       wmDot.className = 'dot';
       wmText.textContent = '—';
     }
-    if (addBtn) addBtn.classList.toggle('hidden', !isValid || hasWm);
-    if (rmBtn) rmBtn.classList.toggle('hidden', !isValid || !hasWm);
-    window.onbeforeunload = state.dirty ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
   }
 
   ta.addEventListener('input', updateStatus);
@@ -1400,9 +1458,8 @@ function bindEditorCommon() {
       updateStatus();
     }
   });
-  updateStatus();
 
-  $('#btn-format').addEventListener('click', () => {
+  $('#jem-btn-format').addEventListener('click', () => {
     try {
       const obj = JSON.parse(ta.value);
       ta.value = JSON.stringify(obj, null, 2);
@@ -1412,70 +1469,49 @@ function bindEditorCommon() {
       toast('JSON 错误，无法格式化', 'err');
     }
   });
-  $('#btn-revert').addEventListener('click', () => {
-    if (!state.dirty) return;
-    if (!confirm('放弃所有未保存的修改？')) return;
+
+  $('#jem-btn-revert').addEventListener('click', () => {
     ta.value = state.originalJson;
     updateStatus();
     toast('已还原', 'ok', 1200);
   });
+
+  $('#jem-btn-wm').addEventListener('click', () => {
+    try {
+      const data = JSON.parse(ta.value);
+      const root = data.data || data;
+      if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+      root.extensions.rp_hub_watermark = 'rp-hub';
+      if (data.data) data.data = root;
+      ta.value = JSON.stringify(data, null, 2);
+      updateStatus();
+      toast('已添加 rp-hub 水印', 'ok');
+    } catch (e) {
+      toast('JSON 无效，无法添加水印', 'err');
+    }
+  });
+
+  $('#jem-btn-save').addEventListener('click', saveJsonFromModal);
+  $('#jem-btn-close').addEventListener('click', closeJsonEditorModal);
+
+  updateStatus();
 }
 
-/* ---------------- Save flows ---------------- */
-function ensureWatermark(jsonData) {
-  const root = jsonData.data || jsonData;
-  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
-  if (!root.extensions.rp_hub_watermark) root.extensions.rp_hub_watermark = 'rp-hub';
-  if (jsonData.data) jsonData.data = root;
-  return jsonData;
-}
+// close modals on overlay click and escape
+document.addEventListener('click', (e) => {
+  const jem = $('#json-edit-modal');
+  if (jem?.classList.contains('show') && e.target === jem) closeJsonEditorModal();
+  const prop = $('#properties-modal');
+  if (prop?.classList.contains('show') && e.target === prop) closePropertiesModal();
+});
 
-function getEditorJson() {
-  const ta = $('#json-edit');
-  if (!ta) return null;
-  try { return JSON.parse(ta.value); } catch (e) { return null; }
-}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeJsonEditorModal(); closePropertiesModal(); }
+});
 
-function setEditorJson(obj) {
-  const ta = $('#json-edit');
-  if (!ta) return;
-  ta.value = JSON.stringify(obj, null, 2);
-  ta.dispatchEvent(new Event('input'));
-}
+$('#prop-btn-close')?.addEventListener('click', closePropertiesModal);
 
-function addWatermark() {
-  const data = getEditorJson();
-  if (!data) { toast('JSON 无效，无法添加水印', 'err'); return; }
-  const root = data.data || data;
-  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
-  root.extensions.rp_hub_watermark = 'rp-hub';
-  if (data.data) data.data = root;
-  setEditorJson(data);
-  toast('已添加 rp-hub 水印', 'ok');
-}
-
-function removeWatermark() {
-  const data = getEditorJson();
-  if (!data) { toast('JSON 无效，无法去除水印', 'err'); return; }
-  const root = data.data || data;
-  if (root.extensions) {
-    delete root.extensions.rp_hub_watermark;
-    if (Object.keys(root.extensions).length === 0) delete root.extensions;
-  }
-  if (data.data) data.data = root;
-  setEditorJson(data);
-  toast('已去除水印', 'ok');
-}
-
-function togglePreview() {
-  state.previewCollapsed = !state.previewCollapsed;
-  const panel = $('#preview-panel');
-  const container = panel?.closest('.ws-loaded');
-  if (panel) panel.classList.toggle('collapsed', state.previewCollapsed);
-  if (container) container.classList.toggle('full', state.previewCollapsed);
-}
-
-/* ---------------- Character preview modal ---------------- */
+/* ---------------- Workspace character preview HTML builder ---------------- */
 function extractUiTemplates(rawData) {
   if (!rawData) return [];
   const content = rawData?.data || rawData || {};
@@ -1495,11 +1531,8 @@ function extractUiTemplates(rawData) {
   return [];
 }
 
-function openCharacterPreview() {
-  const ta = $('#json-edit');
-  if (!ta) return;
-  let data;
-  try { data = JSON.parse(ta.value); } catch (e) { toast('JSON 无效，无法预览', 'err'); return; }
+function buildCharacterPreviewHtml(data) {
+  if (!data) return '<div class="nope"><h1>∅</h1><p>该文件没有可预览的角色数据。</p></div>';
   const root = data.data || data;
   const name = root.name || root.char_name || '未命名角色';
   const desc = root.description || '';
@@ -1510,36 +1543,21 @@ function openCharacterPreview() {
   const systemPrompt = root.system_prompt || '';
   const postHistoryInstructions = root.post_history_instructions || '';
   const tags = Array.isArray(root.tags) ? root.tags : [];
-  const spec = root.spec || '—';
-  const hasWm = checkWatermark(data);
   const uiTemplates = extractUiTemplates(data);
 
   const decoHead = (label) =>
     `<div class="pm-deco-head"><span class="pm-line"></span><span class="pm-label">${label}</span><span class="pm-line"></span></div>`;
 
-  let html = '';
+  let html = `<div class="pm-section" style="margin-bottom:8px;"><h2 style="font-family:'Fraunces',serif;font-weight:600;font-size:24px;color:var(--ink-0);margin:0 0 4px;letter-spacing:-0.01em;">${escapeHtml(name)}</h2></div>`;
 
-  if (desc) {
-    html += `<div class="pm-section">${decoHead('📝 描述')}<div class="pm-content">${renderMarkdown(desc)}</div></div>`;
-  }
-  if (personality) {
-    html += `<div class="pm-section">${decoHead('🧠 性格')}<div class="pm-content">${renderMarkdown(personality)}</div></div>`;
-  }
-  if (firstMes) {
-    html += `<div class="pm-section">${decoHead('💬 开场白')}<div class="pm-content">${renderMarkdown(firstMes)}</div></div>`;
-  }
-  if (mesExample) {
-    html += `<div class="pm-section">${decoHead('📋 对话示例')}<div class="pm-content">${renderMarkdown(mesExample)}</div></div>`;
-  }
-  if (creatorNotes) {
-    html += `<div class="pm-creator-notes"><div>${escapeHtml(creatorNotes)}</div></div>`;
-  }
-  if (systemPrompt) {
-    html += `<div class="pm-section">${decoHead('⚙️ 系统提示')}<div class="pm-content">${renderMarkdown(systemPrompt)}</div></div>`;
-  }
-  if (postHistoryInstructions) {
-    html += `<div class="pm-section">${decoHead('📌 历史记录指示')}<div class="pm-content">${renderMarkdown(postHistoryInstructions)}</div></div>`;
-  }
+  if (desc) html += `<div class="pm-section">${decoHead('描述')}<div class="pm-content">${renderMarkdown(desc)}</div></div>`;
+  if (personality) html += `<div class="pm-section">${decoHead('性格')}<div class="pm-content">${renderMarkdown(personality)}</div></div>`;
+  if (firstMes) html += `<div class="pm-section">${decoHead('开场白')}<div class="pm-content">${renderMarkdown(firstMes)}</div></div>`;
+  if (mesExample) html += `<div class="pm-section">${decoHead('对话示例')}<div class="pm-content">${renderMarkdown(mesExample)}</div></div>`;
+  if (creatorNotes) html += `<div class="pm-creator-notes"><div>${escapeHtml(creatorNotes)}</div></div>`;
+  if (systemPrompt) html += `<div class="pm-section">${decoHead('系统提示')}<div class="pm-content">${renderMarkdown(systemPrompt)}</div></div>`;
+  if (postHistoryInstructions) html += `<div class="pm-section">${decoHead('历史记录指示')}<div class="pm-content">${renderMarkdown(postHistoryInstructions)}</div></div>`;
+
   if (uiTemplates.length) {
     let uiHtml = '';
     for (const t of uiTemplates) {
@@ -1547,24 +1565,18 @@ function openCharacterPreview() {
       const tContent = t.htmlTemplate || t.template || t.html || t.content || t.markup || '';
       uiHtml += `<div class="pm-ui-template">${tName ? `<div class="pm-ui-name">${escapeHtml(tName)}</div>` : ''}<div class="pm-content">${renderMarkdown(tContent)}</div></div>`;
     }
-    if (uiHtml) html += `<div class="pm-section">${decoHead('🎨 原始模板UI')}${uiHtml}</div>`;
+    if (uiHtml) html += `<div class="pm-section">${decoHead('原始模板UI')}${uiHtml}</div>`;
   }
+
   if (tags.length) {
-    html += `<div class="pm-section"><span class="pm-label" style="margin-bottom:10px;display:block;">🏷️ 标签</span><div class="pm-tags">${tags.map(t => `<span class="pm-tag">${escapeHtml(String(t))}</span>`).join('')}</div></div>`;
+    html += `<div class="pm-section"><span class="pm-label" style="margin-bottom:10px;display:block;">标签</span><div class="pm-tags">${tags.map(t => `<span class="pm-tag">${escapeHtml(String(t))}</span>`).join('')}</div></div>`;
   }
-  html += `<div class="pm-section" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);"><span class="pm-label" style="margin-bottom:10px;display:block;">ℹ️ 元数据</span><div class="pm-meta"><span>规范: ${escapeHtml(spec)}</span><span>水印: ${hasWm ? 'rp-hub ✓' : '未设置'}</span></div></div>`;
 
   if (!desc && !personality && !firstMes && !mesExample && !creatorNotes && !systemPrompt && !postHistoryInstructions && !uiTemplates.length) {
-    html = `<div class="pm-section"><div class="pm-empty">该角色卡没有可供预览的文本内容。</div></div>`;
+    html = `<div style="text-align:center;padding:60px 20px;"><div style="font-size:48px;opacity:0.3;margin-bottom:16px;">⊹</div><p style="color:var(--ink-2);">该角色卡没有可供预览的文本内容。<br>点击「编辑json」查看原始数据。</p></div>`;
   }
 
-  $('#pm-name').textContent = name;
-  $('#pm-body').innerHTML = html;
-  $('#preview-modal').classList.add('show');
-}
-
-function closeCharacterPreview() {
-  $('#preview-modal')?.classList.remove('show');
+  return html;
 }
 
 function renderMarkdown(text) {
@@ -1584,16 +1596,6 @@ function renderMarkdown(text) {
     return escapeHtml(raw);
   }
 }
-
-// close preview on overlay click and close button
-document.addEventListener('click', (e) => {
-  const modal = $('#preview-modal');
-  if (modal?.classList.contains('show') && e.target === modal) closeCharacterPreview();
-});
-$('#btn-close-preview')?.addEventListener('click', closeCharacterPreview);
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeCharacterPreview();
-});
 
 /* ---------------- Context menu ---------------- */
 let contextNode = null;
@@ -1634,6 +1636,7 @@ $('#context-menu')?.addEventListener('click', async (e) => {
     if (action === 'copy') await copyFileNode(node);
     else if (action === 'rename') await renameFileNode(node);
     else if (action === 'delete') await deleteFileNode(node);
+    else if (action === 'properties') await showFileProperties(node);
     else if (action === 'export-json') await contextExportJson(node);
     else if (action === 'import-json') { contextImportJson(node); }
   } catch (err) {
@@ -1745,13 +1748,12 @@ async function savePng() {
   if (state.saving) return;
   const node = state.activeFile;
   const item = node.item;
-  const ta = $('#json-edit');
-  let jsonData;
-  try {
-    jsonData = JSON.parse(ta.value);
-  } catch (e) {
-    toast('JSON 错误: ' + e.message, 'err');
-    return;
+  let jsonData = item.data;
+  if (!jsonData) {
+    try { jsonData = JSON.parse(state.originalJson); } catch (e) {
+      toast('JSON 数据无效', 'err');
+      return;
+    }
   }
   jsonData = ensureWatermark(jsonData);
   const finalText = JSON.stringify(jsonData, null, 2);
@@ -1760,9 +1762,6 @@ async function savePng() {
   const saveBtn = $('#btn-save');
   saveBtn.disabled = true;
   saveBtn.textContent = '保存中…';
-  const statusMsg = $('#status-msg');
-  statusMsg.className = 'msg';
-  statusMsg.textContent = '正在写入 PNG…';
 
   try {
     const payload = encodeBase64Utf8(JSON.stringify(jsonData));
@@ -1776,30 +1775,16 @@ async function savePng() {
     item.fileSize = newPng.length;
 
     state.originalJson = finalText;
-    ta.value = finalText;
     state.dirty = false;
 
-    const img = $('#png-preview');
-    if (img) {
-      URL.revokeObjectURL(img.src);
-      img.src = URL.createObjectURL(new Blob([newPng], { type: 'image/png' }));
-    }
-
-    statusMsg.className = 'msg ok';
-    statusMsg.textContent = '✓ 已写入 PNG ' + new Date().toLocaleTimeString();
-    renderTree();
-    toast('已写入 PNG 的 tEXt 块', 'ok');
-  } catch (e) {
-    console.error(e);
-    statusMsg.className = 'msg err';
-    statusMsg.textContent = '保存失败: ' + e.message;
-    toast('保存失败: ' + e.message, 'err');
+    toast('已保存到 PNG ✓', 'ok');
+  } catch (err) {
+    console.error(err);
+    toast('保存失败: ' + err.message, 'err');
   } finally {
     state.saving = false;
     saveBtn.disabled = false;
-    saveBtn.innerHTML = `
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      保存到 PNG`;
+    saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存到 PNG';
   }
 }
 
@@ -1807,13 +1792,12 @@ async function saveJson() {
   if (state.saving) return;
   const node = state.activeFile;
   const item = node.item;
-  const ta = $('#json-edit');
-  let jsonData;
-  try {
-    jsonData = JSON.parse(ta.value);
-  } catch (e) {
-    toast('JSON 错误: ' + e.message, 'err');
-    return;
+  let jsonData = item.data;
+  if (!jsonData) {
+    try { jsonData = JSON.parse(state.originalJson); } catch (e) {
+      toast('JSON 数据无效', 'err');
+      return;
+    }
   }
   const finalText = JSON.stringify(jsonData, null, 2);
 
@@ -1821,9 +1805,6 @@ async function saveJson() {
   const saveBtn = $('#btn-save');
   saveBtn.disabled = true;
   saveBtn.textContent = '保存中…';
-  const statusMsg = $('#status-msg');
-  statusMsg.className = 'msg';
-  statusMsg.textContent = '正在写入文件…';
 
   try {
     const w = await item.handle.createWritable();
@@ -1833,24 +1814,17 @@ async function saveJson() {
     item.hasError = false;
     item.fileSize = new Blob([finalText]).size;
     state.originalJson = finalText;
-    ta.value = finalText;
     state.dirty = false;
 
-    statusMsg.className = 'msg ok';
-    statusMsg.textContent = '✓ 已保存 ' + new Date().toLocaleTimeString();
     renderTree();
     toast('已保存 JSON 文件', 'ok');
   } catch (e) {
     console.error(e);
-    statusMsg.className = 'msg err';
-    statusMsg.textContent = '保存失败: ' + e.message;
     toast('保存失败: ' + e.message, 'err');
   } finally {
     state.saving = false;
     saveBtn.disabled = false;
-    saveBtn.innerHTML = `
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      保存`;
+    saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存';
   }
 }
 
@@ -1864,16 +1838,12 @@ async function exportPngJson() {
   }
   const baseName = item.name.replace(/\.png$/i, '');
   const outName = baseName + '.json';
-  const statusMsg = $('#status-msg');
-  statusMsg.className = 'msg';
-  statusMsg.textContent = '正在导出…';
   try {
     const parentDir = node.parentHandle || state.dirHandle;
     let existing = null;
     try { existing = await parentDir.getFileHandle(outName); } catch (_) {}
     if (existing) {
       if (!confirm(`已存在 ${outName}，要覆盖吗？`)) {
-        statusMsg.textContent = '';
         return;
       }
     }
@@ -1881,16 +1851,11 @@ async function exportPngJson() {
     const w = await fh.createWritable();
     await w.write(JSON.stringify(item.data, null, 2));
     await w.close();
-    statusMsg.className = 'msg ok';
-    statusMsg.textContent = `✓ 已导出 ${outName}`;
     toast(`已导出 ${outName}`, 'ok');
-    // refresh tree to pick up new file
     await scanAndBuild();
   } catch (e) {
     if (e.name !== 'AbortError') {
       console.error(e);
-      statusMsg.className = 'msg err';
-      statusMsg.textContent = '导出失败: ' + e.message;
       toast('导出失败: ' + e.message, 'err');
     }
   }
@@ -1909,16 +1874,12 @@ async function triggerImportJson() {
 
   if (autoHandle) {
     if (confirm(`检测到同名 JSON 文件「${outName}」，是否直接导入？\n\n点击「确定」导入同名文件\n点击「取消」手动选择文件`)) {
-      const statusMsg = $('#status-msg');
-      statusMsg.className = 'msg';
-      statusMsg.textContent = '正在读取导入文件…';
       try {
         const file = await autoHandle.getFile();
         const text = await file.text();
         applyImportedJson(text, outName);
       } catch (e) {
         toast('读取失败: ' + e.message, 'err');
-        if (statusMsg) { statusMsg.className = ''; statusMsg.textContent = ''; }
       }
       return;
     }
@@ -1929,21 +1890,17 @@ async function triggerImportJson() {
 }
 
 function applyImportedJson(text, fileName) {
-  const statusMsg = $('#status-msg');
   try {
     const obj = JSON.parse(text);
     const formatted = JSON.stringify(obj, null, 2);
-    const ta = $('#json-edit');
-    ta.value = formatted;
+    state.originalJson = formatted;
     state.activeFile.item.data = obj;
     state.dirty = true;
-    ta.dispatchEvent(new Event('input'));
-    statusMsg.className = 'msg warn';
-    statusMsg.textContent = `⚠ 已从 ${fileName} 载入，点击「保存到 PNG」写入`;
+    const jem = $('#jem-textarea');
+    if (jem) { jem.value = formatted; jem.dispatchEvent(new Event('input')); }
+    renderEditor(state.activeFile.item);
     toast('已载入导入文件，请检查后保存', 'warn');
   } catch (e) {
-    statusMsg.className = 'msg err';
-    statusMsg.textContent = '导入失败: ' + e.message;
     toast('导入失败: ' + e.message, 'err');
   }
 }
@@ -1953,16 +1910,11 @@ els.importFile.addEventListener('change', async (e) => {
   if (!file) return;
   const node = state.activeFile;
   if (!node || node.fileType !== 'png') return;
-  const statusMsg = $('#status-msg');
-  statusMsg.className = 'msg';
-  statusMsg.textContent = '正在读取导入文件…';
   try {
     const text = await file.text();
     applyImportedJson(text, file.name);
   } catch (e) {
     console.error(e);
-    statusMsg.className = 'msg err';
-    statusMsg.textContent = '导入失败: ' + e.message;
     toast('导入失败: ' + e.message, 'err');
   } finally {
     els.importFile.value = '';
