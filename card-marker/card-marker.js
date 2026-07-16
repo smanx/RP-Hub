@@ -144,11 +144,18 @@ function createTextChunk(key, value) {
     return fullChunk;
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
 function injectPngTextChunk(pngBuffer, key, value) {
     const pngBytes = new Uint8Array(pngBuffer);
+    for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
+        if (pngBytes[i] !== PNG_SIGNATURE[i]) {
+            throw new Error('Invalid PNG: missing or wrong signature. Please restore the original file.');
+        }
+    }
     const view = new DataView(pngBytes.buffer, pngBytes.byteOffset, pngBytes.byteLength);
     const textChunk = createTextChunk(key, value);
-    const removeTypes = new Set([key, 'chara', 'ccv3']);
+    const removeTypes = new Set(['tEXt', 'iTXt', 'zTXt']);
     const kept = [pngBytes.slice(0, 8)];
     let offset = 8;
 
