@@ -647,6 +647,12 @@ def main():
     replace_domain_in_files(build_dir, "rphforum.zeabur.app", "rphforum.smanx.xx.kg")
     print_success("  ✓ 域名替换完成")
 
+    print_info("替换图片生成服务地址...")
+    replace_in_file(str(build_dir / "assets" / "js" / "app.js"), {
+        'https://nai.sta1n.cn': 'https://cf-worker-image-gen.dogegg.dpdns.org'
+    })
+    print_success("  ✓ 图片生成服务地址替换完成")
+
 
     print_info("注入 Vue app 实例暴露代码...")
     app_js_path = build_dir / "assets" / "js" / "app.js"
