@@ -48,7 +48,7 @@ export default {
     const headerMeta = {
       'X-Model': targetModel,
       'X-Size': DEFAULT_SIZE,
-      'X-Response-Format': 'b64_json',
+      'X-Response-Format': 'url',
       'X-Upstream': maskUrl(DEFAULT_UPSTREAM),
     };
 
@@ -76,7 +76,7 @@ export default {
       prompt: prompt,
       n: 1,
       size: DEFAULT_SIZE,
-      response_format: 'b64_json',
+      response_format: 'url',
     };
 
     let upstreamResponse;
