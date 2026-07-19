@@ -7,15 +7,16 @@
 // Environment variables:
 //   UPSTREAM_BASE - OpenAI-compatible API base URL (default: https://api.openai.com/v1)
 
-const DEFAULT_UPSTREAM = env.DEFAULT_UPSTREAM || 'https://openai.good.hidns.vip/v1';
-const DEFAULT_MODEL = env.DEFAULT_MODEL || 'qwen3.7-max';
-
-const MODEL_MAP = {
-  'nai-diffusion-4-5-full': DEFAULT_MODEL,
-};
 
 export default {
   async fetch(request, env, ctx) {
+    const DEFAULT_UPSTREAM = env.DEFAULT_UPSTREAM || 'https://openai.good.hidns.vip/v1';
+    const DEFAULT_MODEL = env.DEFAULT_MODEL || 'qwen3.7-max';
+    const DEFAULT_SIZE = env.DEFAULT_SIZE || '1:1';
+    const MODEL_MAP = {
+      'nai-diffusion-4-5-full': DEFAULT_MODEL,
+    };
+
     const url = new URL(request.url);
     const upstreamBase = (env.UPSTREAM_BASE || DEFAULT_UPSTREAM).replace(/\/+$/, '');
 
@@ -41,11 +42,21 @@ export default {
     const sampler = url.searchParams.get('sampler');
     const noise_schedule = url.searchParams.get('noise_schedule');
 
+    // Map model to OpenAI-compatible name
+    const targetModel = MODEL_MAP[model] || MODEL_MAP;
+
+    const headerMeta = {
+      'X-Model': targetModel,
+      'X-Size': DEFAULT_SIZE,
+      'X-Response-Format': 'b64_json',
+      'X-Upstream': maskUrl(DEFAULT_UPSTREAM),
+    };
+
     if (!tag) {
-      return errorSvg('Request Validation', 'Missing required parameter: "tag" (prompt)');
+      return errorSvg('Request Validation', 'Missing required parameter: "tag" (prompt)', headerMeta);
     }
     if (!token) {
-      return errorSvg('Request Validation', 'Missing required parameter: "token" (API key)');
+      return errorSvg('Request Validation', 'Missing required parameter: "token" (API key)', headerMeta);
     }
 
     // Build prompt – prepend artist tags if provided
@@ -59,25 +70,12 @@ export default {
       prompt += `\nNegative prompt: ${negative}`;
     }
 
-    // Append generation hints from NovelAI-specific params (if present)
-    // const hints = [];
-    // if (steps) hints.push(`steps:${steps}`);
-    // if (scale) hints.push(`scale:${scale}`);
-    // if (sampler) hints.push(`sampler:${sampler}`);
-    // if (noise_schedule) hints.push(`schedule:${noise_schedule}`);
-    // if (hints.length > 0) {
-    //   prompt += `\n[${hints.join(', ')}]`;
-    // }
-
-    // Map model to OpenAI-compatible name
-    const targetModel = MODEL_MAP[model] || MODEL_MAP;
-
     // --- Build OpenAI-format request ---
     const openaiBody = {
       model: targetModel,
       prompt: prompt,
       n: 1,
-      size: '3:4',
+      size: DEFAULT_SIZE,
       response_format: 'b64_json',
     };
 
@@ -92,7 +90,7 @@ export default {
         body: JSON.stringify(openaiBody),
       });
     } catch (e) {
-      return errorSvg('Upstream Connection', `Connection failed: ${e.message}`);
+      return errorSvg('Upstream Connection', `Connection failed: ${e.message}`, headerMeta);
     }
 
     // --- Handle upstream errors ---
@@ -104,7 +102,7 @@ export default {
       } catch {
         try { errText = await upstreamResponse.text(); } catch { errText = `HTTP ${upstreamResponse.status}`; }
       }
-      return errorSvg('Upstream API Error', errText);
+      return errorSvg('Upstream API Error', errText, headerMeta);
     }
 
     // --- Parse OpenAI response ---
@@ -112,12 +110,12 @@ export default {
     try {
       json = await upstreamResponse.json();
     } catch (e) {
-      return errorSvg('Response Parsing', `Failed to parse upstream response: ${e.message}`);
+      return errorSvg('Response Parsing', `Failed to parse upstream response: ${e.message}`, headerMeta);
     }
 
     const data = json.data?.[0];
     if (!data) {
-      return errorSvg('Response Parsing', 'Upstream returned empty data array');
+      return errorSvg('Response Parsing', 'Upstream returned empty data array', headerMeta);
     }
 
     // Return b64_json directly as image
@@ -127,6 +125,7 @@ export default {
         headers: {
           'Content-Type': 'image/png',
           'Cache-Control': 'no-cache',
+          ...headerMeta,
         },
       }));
     }
@@ -137,20 +136,21 @@ export default {
       try {
         imgResponse = await fetch(data.url);
       } catch (e) {
-        return errorSvg('Image Fetch', `Failed to fetch image URL: ${e.message}`);
+        return errorSvg('Image Fetch', `Failed to fetch image URL: ${e.message}`, headerMeta);
       }
       if (!imgResponse.ok) {
-        return errorSvg('Image Fetch', `Image URL returned HTTP ${imgResponse.status}`);
+        return errorSvg('Image Fetch', `Image URL returned HTTP ${imgResponse.status}`, headerMeta);
       }
       return cors(new Response(imgResponse.body, {
         headers: {
           'Content-Type': imgResponse.headers.get('Content-Type') || 'image/png',
           'Cache-Control': 'no-cache',
+          ...headerMeta,
         },
       }));
     }
 
-    return errorSvg('Response Parsing', 'Unknown response format from upstream');
+    return errorSvg('Response Parsing', 'Unknown response format from upstream', headerMeta);
   },
 };
 
@@ -164,7 +164,7 @@ function cors(res) {
   return new Response(res.body, { status: res.status, headers });
 }
 
-function errorSvg(step, message) {
+function errorSvg(step, message, extraHeaders = {}) {
   const escaped = message
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -210,8 +210,25 @@ ${textElements}
       'Content-Type': 'image/svg+xml',
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache',
+      ...extraHeaders,
     },
   });
+}
+
+function maskUrl(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.hostname.split('.');
+    if (parts.length > 2) {
+      for (let i = 0; i < parts.length - 2; i++) {
+        parts[i] = 'x'.repeat(parts[i].length);
+      }
+      u.hostname = parts.join('.');
+    }
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
 }
 
 function wrapText(text, maxLen) {
