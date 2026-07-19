@@ -10,7 +10,7 @@
 
 export default {
   async fetch(request, env, ctx) {
-    const DEFAULT_UPSTREAM = env.DEFAULT_UPSTREAM || 'https://openai.good.hidns.vip/v1';
+    const DEFAULT_UPSTREAM = env.DEFAULT_UPSTREAM || 'https://api.openai.com/v1';
     const DEFAULT_MODEL = env.DEFAULT_MODEL || 'qwen3.7-max';
     const DEFAULT_SIZE = env.DEFAULT_SIZE || '1:1';
     const MODEL_MAP = {
