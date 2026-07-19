@@ -124,7 +124,7 @@ export default {
       return cors(new Response(binary, {
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'public, max-age=31536000, immutable',
           ...headerMeta,
         },
       }));
@@ -144,7 +144,7 @@ export default {
       return cors(new Response(imgResponse.body, {
         headers: {
           'Content-Type': imgResponse.headers.get('Content-Type') || 'image/png',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'public, max-age=31536000, immutable',
           ...headerMeta,
         },
       }));
