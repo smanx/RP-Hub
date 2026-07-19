@@ -7,8 +7,8 @@
 // Environment variables:
 //   UPSTREAM_BASE - OpenAI-compatible API base URL (default: https://api.openai.com/v1)
 
-const DEFAULT_UPSTREAM = 'https://openai.good.hidns.vip/v1';
-const DEFAULT_MODEL = 'qwen3.7-max';
+const DEFAULT_UPSTREAM = env.DEFAULT_UPSTREAM || 'https://openai.good.hidns.vip/v1';
+const DEFAULT_MODEL = env.DEFAULT_MODEL || 'qwen3.7-max';
 
 const MODEL_MAP = {
   'nai-diffusion-4-5-full': DEFAULT_MODEL,
