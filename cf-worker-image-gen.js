@@ -25,8 +25,8 @@ export default {
       return cors(new Response(null, { status: 204 }));
     }
 
-    // Only handle GET /generations (the format the app sends)
-    if (url.pathname !== '/generations' || request.method !== 'GET') {
+    // Only handle GET /generate (the format the app sends)
+    if (url.pathname !== '/generate' || request.method !== 'GET') {
       return new Response('Not Found', { status: 404 });
     }
 
