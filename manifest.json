@@ -1,0 +1,17 @@
+{
+  "name": "Roleplay Hub",
+  "short_name": "RP Hub",
+  "description": "一款纯前端运行的本地角色扮演（Roleplay）对话和角色卡生成工具",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#1f2937",
+  "icons": [
+    {
+      "src": "./assets/icon.085bbc03.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,2614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Card Marker · 角色卡编辑器</title>
+<style>
+  :root {
+    --bg-0: #0b0d10;
+    --bg-1: #11141a;
+    --bg-2: #161a22;
+    --bg-3: #1d222c;
+    --bg-4: #252b37;
+    --line: #2a3140;
+    --line-soft: #1f2530;
+    --ink-0: #e8eaf0;
+    --ink-1: #b6bcc9;
+    --ink-2: #7a8194;
+    --ink-3: #525968;
+    --accent: #d6ff5c;
+    --accent-ink: #0b0d10;
+    --accent-soft: rgba(214, 255, 92, 0.12);
+    --warn: #ffb454;
+    --err: #ff6b6b;
+    --ok: #7ee787;
+    --png: #6bb8ff;
+    --png-soft: rgba(107, 184, 255, 0.12);
+    --json: #c4a3ff;
+    --json-soft: rgba(196, 163, 255, 0.12);
+    --dir: #f0c674;
+    --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.35);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 20% -10%, #161a26 0%, var(--bg-0) 60%) fixed;
+    color: var(--ink-0);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+  }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 8px; border: 2px solid var(--bg-0); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4253; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* Layout */
+  .app {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    grid-template-rows: 60px 1fr;
+    height: 100vh;
+  }
+  header.topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+    border-bottom: 1px solid var(--line-soft);
+    backdrop-filter: blur(8px);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+  }
+  .brand .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .brand .sub {
+    color: var(--ink-2);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 6px;
+    letter-spacing: 0.02em;
+  }
+  .path {
+    flex: 1;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--ink-2);
+    padding: 6px 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .path .label { color: var(--ink-3); margin-right: 8px; }
+  .path .empty { color: var(--ink-3); font-style: italic; }
+
+  button.btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    color: var(--ink-0);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  button.btn:hover { background: var(--bg-3); border-color: #353c4d; transform: translateY(-1px); }
+  button.btn:active { transform: translateY(0); }
+  button.btn.primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  button.btn.primary:hover { background: #e3ff7a; border-color: #e3ff7a; }
+  button.btn.ghost { background: transparent; border-color: var(--line-soft); color: var(--ink-1); }
+  button.btn.ghost:hover { background: var(--bg-2); color: var(--ink-0); }
+  button.btn.png-btn {
+    background: var(--png-soft);
+    color: var(--png);
+    border-color: rgba(107, 184, 255, 0.3);
+  }
+  button.btn.png-btn:hover { background: rgba(107, 184, 255, 0.2); border-color: var(--png); }
+  button.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  button.btn.hidden { display: none; }
+  button.btn .icon { width: 14px; height: 14px; }
+
+  /* Sidebar */
+  aside.sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--line-soft);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .side-head {
+    padding: 14px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .side-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .count {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+  .count .c-png { color: var(--png); }
+  .count .c-json { color: var(--json); }
+  .count .c-dir { color: var(--dir); }
+
+  .tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px 16px;
+    font-size: 13px;
+  }
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px 5px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--ink-1);
+    transition: background 0.1s;
+    position: relative;
+  }
+  .tree-row:hover { background: var(--bg-2); }
+  .tree-row.active { background: var(--bg-3); }
+  .tree-row .caret {
+    width: 14px; height: 14px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+    transition: transform 0.15s;
+  }
+  .tree-row.dir.expanded .caret { transform: rotate(90deg); color: var(--ink-1); }
+  .tree-row .caret.spacer { visibility: hidden; }
+  .tree-row .ico {
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tree-row .ico svg { width: 14px; height: 14px; }
+  .tree-row .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  .tree-row .badge {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+  }
+  .tree-row.png .ico { color: var(--png); }
+  .tree-row.png .name { color: var(--ink-0); }
+  .tree-row.png .badge { background: var(--png-soft); color: var(--png); }
+  .tree-row.json .ico { color: var(--json); }
+  .tree-row.json .name { color: var(--ink-0); }
+  .tree-row.json .badge { background: var(--json-soft); color: var(--json); }
+  .tree-row.other { cursor: not-allowed; opacity: 0.55; }
+  .tree-row.other .ico { color: var(--ink-3); }
+
+  .tree-children { display: none; }
+  .tree-children.show { display: block; }
+  .tree-loading, .tree-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--ink-2);
+    font-size: 13px;
+  }
+  .tree-loading .ico, .tree-empty .ico { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+
+  /* Main */
+  main.workspace {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .ws-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    color: var(--ink-2);
+    padding: 40px;
+  }
+  .ws-empty h2 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 500;
+    font-size: 24px;
+    color: var(--ink-1);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .ws-empty p { margin: 0; max-width: 480px; text-align: center; }
+  .ws-empty .features {
+    display: flex; gap: 24px;
+    margin-top: 18px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .ws-empty .features span { display: flex; align-items: center; gap: 6px; }
+  .ws-empty .features span::before {
+    content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  }
+
+  .ws-loaded {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr minmax(280px, 380px);
+    overflow: hidden;
+  }
+  .ws-loaded.full {
+    grid-template-columns: 1fr;
+  }
+  .preview {
+    border-right: 1px solid var(--line-soft);
+    padding: 20px;
+    overflow-y: auto;
+    background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  }
+  .preview.collapsed { display: none; }
+  .preview-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .preview-head .preview-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .preview .frame {
+    background:
+      linear-gradient(45deg, #1a1f2a 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1f2a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1f2a 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1f2a 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color: #14181f;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-1);
+    margin-bottom: 18px;
+  }
+  .preview .frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+  .meta-card {
+    background: var(--bg-1);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .meta-card h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-2);
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 12px;
+  }
+  .meta-row + .meta-row { border-top: 1px dashed var(--line-soft); }
+  .meta-row .k { color: var(--ink-2); }
+  .meta-row .v { color: var(--ink-0); font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 11px; }
+
+  .editor {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-0);
+  }
+  .editor-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--bg-1);
+    gap: 12px;
+  }
+  .editor-title {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--ink-1);
+    min-width: 0;
+  }
+  .editor-title .file-ico { font-weight: 600; }
+  .editor-title.png .file-ico { color: var(--png); }
+  .editor-title.json .file-ico { color: var(--json); }
+  .editor-title .fname {
+    color: var(--ink-0);
+    font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .editor-actions { display: flex; gap: 8px; }
+  textarea.json-edit {
+    flex: 1;
+    width: 100%;
+    background: var(--bg-0);
+    color: var(--ink-0);
+    border: none;
+    outline: none;
+    padding: 18px 22px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12.5px;
+    line-height: 1.65;
+    resize: none;
+    tab-size: 2;
+  }
+  textarea.json-edit.invalid { background: rgba(255, 107, 107, 0.04); }
+  .status-bar {
+    border-top: 1px solid var(--line-soft);
+    background: var(--bg-1);
+    padding: 8px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    min-height: 36px;
+  }
+  .status-bar .left { display: flex; align-items: center; gap: 14px; }
+  .status-bar .msg { display: flex; align-items: center; gap: 6px; }
+  .status-bar .msg.ok { color: var(--ok); }
+  .status-bar .msg.err { color: var(--err); }
+  .status-bar .msg.warn { color: var(--warn); }
+  .status-bar .right { display: flex; align-items: center; gap: 14px; }
+  .status-bar .indicator { display: flex; align-items: center; gap: 5px; }
+  .status-bar .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ink-3);
+  }
+  .status-bar .dot.ok { background: var(--ok); }
+  .status-bar .dot.err { background: var(--err); }
+  .status-bar .dot.warn { background: var(--warn); }
+
+  /* Field editor */
+  .field-editor {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .field-group { margin-bottom: 18px; }
+  .field-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-2);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .field-hint {
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+    color: var(--ink-3); font-size: 10px; margin-left: 6px;
+  }
+  .field-input, .field-textarea {
+    width: 100%;
+    background: var(--bg-1);
+    color: var(--ink-0);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+  .field-input:focus, .field-textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(139,92,246,0.1);
+  }
+  .field-input::placeholder, .field-textarea::placeholder { color: var(--ink-3); }
+  .field-textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .field-textarea.tall { min-height: 140px; }
+  .field-name { font-size: 16px; font-weight: 500; }
+  .field-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .field-list-item { display: flex; gap: 8px; align-items: flex-start; }
+  .field-list-item .field-textarea { flex: 1; }
+  .field-remove {
+    flex-shrink: 0; width: 34px; height: 34px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1; margin-top: 4px;
+  }
+  .field-add {
+    font-size: 12px; padding: 6px 12px;
+  }
+  .field-collapse {
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 8px;
+    background: var(--bg-0);
+  }
+  .field-collapse-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg-2);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-1);
+    transition: background 0.12s;
+  }
+  .field-collapse-head:hover { background: var(--bg-3); }
+  .field-collapse-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .field-collapse-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .field-collapse-arrow {
+    display: inline-block;
+    transition: transform 0.15s;
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  .field-collapse.open .field-collapse-arrow { transform: rotate(90deg); }
+  .field-collapse-body { display: none; padding: 14px; }
+  .field-collapse.open .field-collapse-body { display: block; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    color: var(--ink-0);
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.ok { border-color: rgba(126, 231, 135, 0.4); }
+  .toast.err { border-color: rgba(255, 107, 107, 0.4); }
+  .toast.warn { border-color: rgba(255, 180, 84, 0.4); }
+
+  .nope {
+    padding: 40px;
+    text-align: center;
+    color: var(--ink-2);
+    max-width: 520px;
+    margin: 80px auto 0;
+  }
+  .nope h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 28px; color: var(--ink-1); }
+  .nope code {
+    background: var(--bg-2); padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    color: var(--accent);
+  }
+
+  /* hidden file input for import */
+  #import-file { display: none; }
+
+  /* Context menu */
+  .context-menu {
+    position: fixed;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    min-width: 140px;
+    padding: 4px;
+    z-index: 200;
+    display: none;
+  }
+  .context-menu.show { display: block; }
+  .context-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--ink-0);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .context-menu-item:hover { background: var(--bg-4); }
+  .context-menu-item .icon { width: 14px; height: 14px; flex-shrink: 0; }
+  .context-menu-sep { height: 1px; background: var(--line-soft); margin: 2px 4px; }
+  .context-menu .ctx-png-only.hidden { display: none; }
+
+  /* Character preview modal */
+  .preview-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .preview-modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .preview-modal {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 680px;
+    max-height: min(90vh, 800px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .preview-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+  .preview-modal-head h2 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 600;
+    font-size: 18px;
+    color: var(--ink-0);
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preview-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .preview-modal-body .pm-section {
+    margin-bottom: 20px;
+  }
+  .preview-modal-body .pm-section:last-child { margin-bottom: 0; }
+  .preview-modal-body .pm-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-2);
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .preview-modal-body .pm-content {
+    color: var(--ink-1);
+    font-size: 14px;
+    line-height: 1.75;
+    word-break: break-word;
+    max-width: none;
+  }
+  .preview-modal-body .pm-content p { margin: 0.75em 0; line-height: 1.75; }
+  .preview-modal-body .pm-content p:first-child { margin-top: 0; }
+  .preview-modal-body .pm-content p:last-child { margin-bottom: 0; }
+  .preview-modal-body .pm-content strong { color: var(--ink-0); font-weight: 700; }
+  .preview-modal-body .pm-content em { color: var(--ink-2); }
+  .preview-modal-body .pm-content blockquote {
+    font-style: italic;
+    border-left: 3px solid var(--line);
+    background: var(--bg-2);
+    padding: 8px 14px;
+    margin: 1.2em 0;
+    border-radius: 0 8px 8px 0;
+    color: var(--ink-2);
+  }
+  .preview-modal-body .pm-content ul, .preview-modal-body .pm-content ol {
+    margin: 0.8em 0;
+    padding-left: 1.625em;
+  }
+  .preview-modal-body .pm-content ul { list-style-type: disc; }
+  .preview-modal-body .pm-content ol { list-style-type: decimal; }
+  .preview-modal-body .pm-content li { margin: 0.4em 0; }
+  .preview-modal-body .pm-content code {
+    background: var(--bg-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-weight: 600;
+    color: var(--accent);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  .preview-modal-body .pm-content pre {
+    background: var(--bg-0);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    padding: 14px;
+    overflow-x: auto;
+    margin: 0.8em 0;
+  }
+  .preview-modal-body .pm-content pre code {
+    background: none;
+    padding: 0;
+    color: var(--ink-0);
+    font-weight: 400;
+  }
+  .preview-modal-body .pm-content a { color: var(--png); text-decoration: underline; }
+  .preview-modal-body .pm-content h1, .preview-modal-body .pm-content h2,
+  .preview-modal-body .pm-content h3, .preview-modal-body .pm-content h4 {
+    color: var(--ink-0);
+    font-weight: 700;
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    line-height: 1.3;
+  }
+  .preview-modal-body .pm-content h1 { font-size: 1.4em; }
+  .preview-modal-body .pm-content h2 { font-size: 1.2em; }
+  .preview-modal-body .pm-content h3 { font-size: 1.1em; }
+  .preview-modal-body .pm-deco-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .preview-modal-body .pm-deco-head .pm-label {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+  .preview-modal-body .pm-deco-head .pm-line {
+    flex: 1;
+    height: 2px;
+    background: var(--line-soft);
+    border-radius: 1px;
+  }
+  .preview-modal-body .pm-creator-notes {
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: rgba(107, 184, 255, 0.06);
+    border: 1px solid rgba(107, 184, 255, 0.15);
+    border-radius: 12px;
+    color: var(--ink-1);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .preview-modal-body .pm-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .preview-modal-body .pm-tag {
+    background: rgba(107, 184, 255, 0.08);
+    color: var(--png);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(107, 184, 255, 0.2);
+  }
+  .preview-modal-body .pm-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--ink-2);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  .preview-modal-body .pm-empty {
+    color: var(--ink-3);
+    font-style: italic;
+    font-size: 13px;
+  }
+  .preview-modal-body .pm-ui-template {
+    margin-bottom: 20px;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: var(--bg-2);
+    padding: 14px;
+    overflow: hidden;
+  }
+  .preview-modal-body .pm-ui-template .pm-ui-name {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--ink-2);
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Card Marker</span>
+      <span class="sub">/ editor</span>
+    </div>
+    <div class="path" id="path">
+      <span class="label">root</span>
+      <span class="empty" id="path-val">— 未选择目录 —</span>
+    </div>
+    <button class="btn ghost" id="btn-collapse" disabled title="全部折叠">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      折叠
+    </button>
+    <button class="btn ghost" id="btn-refresh" disabled>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></svg>
+      刷新
+    </button>
+    <button class="btn primary" id="btn-pick">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      选择目录
+    </button>
+  </header>
+
+  <aside class="sidebar">
+    <div class="side-head">
+      <div class="side-title">文件浏览器</div>
+      <div class="count" id="count">0</div>
+    </div>
+    <div class="tree" id="tree">
+      <div class="tree-empty">
+        <div class="ico">⊹</div>
+        <div>选择目录以开始</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="workspace" id="workspace">
+    <div class="ws-empty" id="ws-empty">
+      <h2>没有选中的文件</h2>
+      <p>从左侧树形列表中选择一个 <code style="color:var(--png);background:var(--png-soft);padding:1px 6px;border-radius:4px;font-size:11px;">PNG</code> 或 <code style="color:var(--json);background:var(--json-soft);padding:1px 6px;border-radius:4px;font-size:11px;">JSON</code> 文件开始编辑。</p>
+      <div class="features">
+        <span>树形浏览</span>
+        <span>PNG: 解析 tEXt</span>
+        <span>PNG: 导出 JSON</span>
+        <span>PNG: 导入 JSON 覆盖</span>
+        <span>JSON: 直接编辑</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<input type="file" id="import-file" accept=".json,application/json" />
+
+<div class="context-menu" id="context-menu">
+  <div class="context-menu-item" data-action="copy">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    复制
+  </div>
+  <div class="context-menu-item" data-action="rename">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+    重命名
+  </div>
+  <div class="context-menu-item" data-action="properties">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    属性
+  </div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" data-action="delete" style="color:var(--err);">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    删除
+  </div>
+  <div class="context-menu-sep ctx-png-only"></div>
+  <div class="context-menu-item ctx-png-only" data-action="export-json">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    导出 JSON
+  </div>
+  <div class="context-menu-item ctx-png-only" data-action="import-json">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    导入 JSON
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="preview-modal-overlay" id="json-edit-modal">
+  <div class="preview-modal" style="width:92vw;max-width:1400px;height:88vh;">
+    <div class="preview-modal-head">
+      <h2 id="jem-title">编辑 JSON</h2>
+      <div style="display:flex;gap:6px;">
+        <button class="btn ghost" id="jem-btn-format" title="格式化">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="18" y2="18"/></svg>
+          格式化
+        </button>
+        <button class="btn ghost" id="jem-btn-revert" title="还原">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          还原
+        </button>
+        <button class="btn" id="jem-btn-wm" title="添加 rp-hub 水印">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          水印
+        </button>
+        <button class="btn primary" id="jem-btn-save" title="保存修改">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          保存
+        </button>
+        <button class="btn ghost" id="jem-btn-close" title="关闭">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="preview-modal-body" style="display:flex;flex-direction:column;padding:0;">
+      <textarea class="json-edit" id="jem-textarea" spellcheck="false" style="flex:1;min-height:0;border:none;border-radius:0;"></textarea>
+      <div class="status-bar" style="border-top:1px solid var(--line-soft);border-radius:0 0 16px 16px;flex-shrink:0;">
+        <div class="left">
+          <div class="indicator"><span class="dot" id="jem-valid-dot"></span><span id="jem-valid-text">—</span></div>
+          <div class="indicator"><span class="dot" id="jem-wm-dot"></span><span id="jem-wm-text">—</span></div>
+          <div class="msg" id="jem-status-msg"></div>
+        </div>
+        <div class="right">
+          <span id="jem-char-count">0 字符</span>
+          <span id="jem-line-count">0 行</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="preview-modal-overlay" id="properties-modal">
+  <div class="preview-modal" style="max-width:520px;">
+    <div class="preview-modal-head">
+      <h2 id="prop-title">属性</h2>
+      <button class="btn ghost" id="prop-btn-close" title="关闭">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="preview-modal-body" id="prop-body"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ *  Card Marker Editor (Tree view)
+ *  - Browse all folders and files like a file manager
+ *  - Folders expand/collapse
+ *  - PNG and JSON files can be selected for editing
+ * ============================================================ */
+
+const $ = (s) => document.querySelector(s);
+
+const state = {
+  dirHandle: null,
+  dirName: '',
+  tree: null,            // { type:'root', handle, name:'', children: [...] }
+  expanded: new Set(),   // paths of expanded dirs
+  counts: { dir: 0, png: 0, json: 0, other: 0 },
+  activeFile: null,      // tree node (file) currently selected
+  loading: false,
+  dirty: false,
+  originalJson: '',
+  saving: false,
+};
+
+const els = {
+  pickBtn: $('#btn-pick'),
+  refreshBtn: $('#btn-refresh'),
+  collapseBtn: $('#btn-collapse'),
+  path: $('#path-val'),
+  tree: $('#tree'),
+  count: $('#count'),
+  workspace: $('#workspace'),
+  wsEmpty: $('#ws-empty'),
+  toast: $('#toast'),
+  importFile: $('#import-file'),
+};
+
+const SUPPORTS_FSA = 'showDirectoryPicker' in window;
+
+const ICONS = {
+  folder: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>',
+  folderOpen: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" opacity="0.4"/><path d="M2 8h20l-2 10H4L2 8z" opacity="0.7"/></svg>',
+  png: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+  json: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H6a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h2"/><path d="M16 3h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-2"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  caret: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>',
+};
+
+/* ---------------- Toast ---------------- */
+let toastTimer = null;
+function toast(msg, kind = 'ok', ms = 2400) {
+  els.toast.className = `toast show ${kind}`;
+  els.toast.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => els.toast.classList.remove('show'), ms);
+}
+
+/* ---------------- Tree scan ---------------- */
+async function scanTree(dirHandle, basePath = '') {
+  const nodes = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (name.startsWith('.')) continue;
+    const path = basePath ? `${basePath}/${name}` : name;
+    if (handle.kind === 'directory') {
+      const children = await scanTree(handle, path);
+      nodes.push({
+        type: 'dir', name, path, handle, parentHandle: dirHandle, children, item: null,
+      });
+    } else {
+      const lower = name.toLowerCase();
+      const fileType = lower.endsWith('.png') ? 'png'
+                     : lower.endsWith('.json') ? 'json'
+                     : 'other';
+      nodes.push({
+        type: 'file', name, path, handle, parentHandle: dirHandle, fileType, item: null,
+      });
+    }
+  }
+  return nodes.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    return a.name.localeCompare(b.name, 'zh-CN');
+  });
+}
+
+function countTree(nodes, counts) {
+  for (const n of nodes) {
+    if (n.type === 'dir') {
+      counts.dir += 1;
+      countTree(n.children, counts);
+    } else if (n.fileType === 'png') counts.png += 1;
+    else if (n.fileType === 'json') counts.json += 1;
+    else counts.other += 1;
+  }
+}
+
+/* ---------------- File System Access API ---------------- */
+async function pickDirectory() {
+  if (!SUPPORTS_FSA) { renderUnsupported(); return; }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    state.dirHandle = handle;
+    state.dirName = handle.name;
+    els.path.textContent = handle.name;
+    els.path.classList.remove('empty');
+    els.refreshBtn.disabled = false;
+    els.collapseBtn.disabled = false;
+    await scanAndBuild();
+    storeHandle('dirHandle', handle).catch(() => {});
+    toast(`已加载：${state.counts.png} PNG · ${state.counts.json} JSON`, 'ok');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error(e);
+      toast('打开目录失败: ' + e.message, 'err');
+    }
+  }
+}
+
+async function scanAndBuild() {
+  els.tree.innerHTML = '<div class="tree-loading"><div class="ico">⏳</div><div>扫描中…</div></div>';
+  try {
+    const children = await scanTree(state.dirHandle, '');
+    state.tree = { type: 'root', handle: state.dirHandle, name: '', children };
+    state.counts = { dir: 0, png: 0, json: 0, other: 0 };
+    countTree(children, state.counts);
+    updateCount();
+    renderTree();
+  } catch (e) {
+    console.error(e);
+    els.tree.innerHTML = '<div class="tree-empty"><div class="ico">!</div><div>扫描失败: ' + escapeHtml(e.message) + '</div></div>';
+  }
+}
+
+function updateCount() {
+  const c = state.counts;
+  els.count.innerHTML =
+    `<span class="c-dir">${c.dir} 📁</span> · ` +
+    `<span class="c-png">${c.png} PNG</span> · ` +
+    `<span class="c-json">${c.json} JSON</span>` +
+    (c.other ? ` · <span>${c.other} 其他</span>` : '');
+}
+
+/* ---------------- Tree render ---------------- */
+function renderTree() {
+  if (!state.tree) return;
+  els.tree.innerHTML = '';
+  if (state.tree.children.length === 0) {
+    els.tree.innerHTML = '<div class="tree-empty"><div class="ico">∅</div><div>此目录为空</div></div>';
+    return;
+  }
+  for (const child of state.tree.children) {
+    renderNode(child, 0, els.tree);
+  }
+}
+
+function renderNode(node, depth, container) {
+  const isExpanded = state.expanded.has(node.path);
+  const isActive = state.activeFile === node;
+
+  const row = document.createElement('div');
+  row.className = `tree-row ${node.type}` + (node.type === 'dir' && isExpanded ? ' expanded' : '') + (isActive ? ' active' : '');
+  row.style.paddingLeft = `${6 + depth * 14}px`;
+  row.dataset.path = node.path;
+
+  // caret
+  if (node.type === 'dir') {
+    const caret = document.createElement('span');
+    caret.className = 'caret';
+    caret.innerHTML = ICONS.caret;
+    caret.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDir(node);
+    });
+    row.appendChild(caret);
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'caret spacer';
+    spacer.innerHTML = ICONS.caret;
+    row.appendChild(spacer);
+  }
+
+  // icon
+  const ico = document.createElement('span');
+  ico.className = 'ico';
+  if (node.type === 'dir') {
+    ico.innerHTML = isExpanded ? ICONS.folderOpen : ICONS.folder;
+  } else if (node.fileType === 'png') {
+    ico.innerHTML = ICONS.png;
+  } else if (node.fileType === 'json') {
+    ico.innerHTML = ICONS.json;
+  } else {
+    ico.innerHTML = ICONS.file;
+  }
+  row.appendChild(ico);
+
+  // name
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = node.name;
+  name.title = node.path;
+  row.appendChild(name);
+
+  // type badge
+  if (node.type === 'file' && (node.fileType === 'png' || node.fileType === 'json')) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = node.fileType.toUpperCase();
+    row.appendChild(badge);
+  }
+
+  // click handler
+  if (node.type === 'dir') {
+    row.addEventListener('click', () => toggleDir(node));
+  } else if (node.fileType === 'png' || node.fileType === 'json') {
+    row.addEventListener('click', () => selectFile(node));
+  }
+
+  // right-click context menu
+  row.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showContextMenu(node, e);
+  });
+
+  container.appendChild(row);
+
+  // children container
+  if (node.type === 'dir' && node.children.length > 0) {
+    const childContainer = document.createElement('div');
+    childContainer.className = 'tree-children' + (isExpanded ? ' show' : '');
+    for (const c of node.children) {
+      renderNode(c, depth + 1, childContainer);
+    }
+    container.appendChild(childContainer);
+  }
+}
+
+function toggleDir(node) {
+  if (state.expanded.has(node.path)) {
+    state.expanded.delete(node.path);
+  } else {
+    state.expanded.add(node.path);
+  }
+  renderTree();
+}
+
+function expandAll() {
+  if (!state.tree) return;
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (n.type === 'dir') {
+        state.expanded.add(n.path);
+        walk(n.children);
+      }
+    }
+  };
+  walk(state.tree.children);
+  renderTree();
+}
+
+function collapseAll() {
+  state.expanded.clear();
+  renderTree();
+}
+
+/* ---------------- File load / select ---------------- */
+async function loadPngItem(handle, name) {
+  const file = await handle.getFile();
+  const pngBytes = new Uint8Array(await file.arrayBuffer());
+  let data = null, hasWatermark = false, hasError = false;
+  try {
+    const parsed = parsePngCharacterData(pngBytes);
+    data = parsed.data;
+    hasWatermark = checkWatermark(data);
+  } catch (e) {
+    hasError = true;
+  }
+  return {
+    type: 'png', handle, name, file,
+    pngBytes, data, hasWatermark, hasError, fileSize: file.size,
+  };
+}
+
+async function loadJsonItem(handle, name) {
+  const file = await handle.getFile();
+  let data = null, hasError = false;
+  try {
+    const text = await file.text();
+    data = JSON.parse(text);
+  } catch (e) {
+    hasError = true;
+  }
+  return {
+    type: 'json', handle, name, file,
+    data, hasError, fileSize: file.size,
+  };
+}
+
+function checkWatermark(obj) {
+  const probe = obj?.data || obj || {};
+  const w = probe.extensions?.rp_hub_watermark;
+  return typeof w === 'string' && w.trim().toLowerCase() === 'rp-hub';
+}
+
+async function selectFile(node) {
+  if (state.loading) return;
+  if (state.activeFile === node) return;
+  if (state.dirty) {
+    if (!confirm('当前文件有未保存的修改，确定切换吗？')) return;
+  }
+  state.loading = true;
+  try {
+    if (!node.item) {
+      if (node.fileType === 'png') {
+        node.item = await loadPngItem(node.handle, node.name);
+      } else if (node.fileType === 'json') {
+        node.item = await loadJsonItem(node.handle, node.name);
+      }
+    }
+    state.activeFile = node;
+    state.dirty = false;
+    state.originalJson = '';
+    renderTree();
+    renderEditor(node.item);
+  } catch (e) {
+    console.error(e);
+    toast('加载失败: ' + e.message, 'err');
+  } finally {
+    state.loading = false;
+  }
+}
+
+/* ---------------- Editor ---------------- */
+function renderEditor() {
+  if (!state.activeFile) {
+    els.workspace.innerHTML = '';
+    els.workspace.appendChild(els.wsEmpty);
+    window.onbeforeunload = null;
+    return;
+  }
+  const item = state.activeFile.item;
+  if (item.type === 'png') {
+    renderPngEditor(item);
+  } else {
+    renderJsonEditor(item);
+  }
+  window.onbeforeunload = state.dirty ? (e) => { e.preventDefault(); e.returnValue = ''; } : null;
+}
+
+function renderPngEditor(item) {
+  const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
+  state.originalJson = jsonText;
+
+  els.workspace.innerHTML = `
+    <div class="ws-loaded" style="grid-template-columns:1fr;">
+      <div class="editor" style="border-right:none;overflow:hidden;">
+        <div class="editor-head">
+          <div class="editor-title png">
+            <span class="file-ico">{ chara }</span>
+            <span class="fname">${escapeHtml(item.name)}</span>
+          </div>
+          <div class="editor-actions">
+            <button class="btn ghost" id="btn-edit-json" title="编辑 JSON">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              编辑json
+            </button>
+            <button class="btn ghost" id="btn-show-props" title="属性">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              属性
+            </button>
+            <button class="btn primary" id="btn-save" title="写回 PNG 的 tEXt 块">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              保存到 PNG
+            </button>
+          </div>
+        </div>
+        ${buildFieldEditorHtml(item)}
+      </div>
+    </div>
+  `;
+
+  bindFieldEditor(item);
+  $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
+  $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
+  $('#btn-save').addEventListener('click', () => savePng());
+}
+
+function renderJsonEditor(item) {
+  const jsonText = item.data ? JSON.stringify(item.data, null, 2) : '';
+  state.originalJson = jsonText;
+
+  els.workspace.innerHTML = `
+    <div class="ws-loaded" style="grid-template-columns:1fr;">
+      <div class="editor" style="border-right:none;overflow:hidden;">
+        <div class="editor-head">
+          <div class="editor-title json">
+            <span class="file-ico">{ }</span>
+            <span class="fname">${escapeHtml(item.name)}</span>
+          </div>
+          <div class="editor-actions">
+            <button class="btn ghost" id="btn-edit-json" title="编辑 JSON">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              编辑json
+            </button>
+            <button class="btn ghost" id="btn-show-props" title="属性">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              属性
+            </button>
+            <button class="btn primary" id="btn-save" title="保存到 JSON 文件">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              保存
+            </button>
+          </div>
+        </div>
+        ${buildFieldEditorHtml(item)}
+      </div>
+    </div>
+  `;
+
+  bindFieldEditor(item);
+  $('#btn-edit-json').addEventListener('click', openJsonEditorModal);
+  $('#btn-show-props').addEventListener('click', () => showFileProperties(state.activeFile));
+  $('#btn-save').addEventListener('click', () => saveJson());
+}
+
+/* ---------------- Save flows ---------------- */
+function ensureWatermark(jsonData) {
+  const root = jsonData.data || jsonData;
+  if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+  if (!root.extensions.rp_hub_watermark) root.extensions.rp_hub_watermark = 'rp-hub';
+  if (jsonData.data) jsonData.data = root;
+  return jsonData;
+}
+
+function showFileProperties(node) {
+  if (!node || node.type === 'dir') return;
+  const isPng = node.fileType === 'png';
+  const item = node.item;
+  if (!item) { toast('文件尚未加载', 'warn'); return; }
+  const root = item.data?.data || item.data || {};
+  const spec = root.spec || '—';
+  const charName = root.name || '—';
+  const sizeKb = (item.fileSize / 1024).toFixed(1);
+  const hasErr = item.hasError;
+  const hasWm = isPng ? item.hasWatermark : checkWatermark(item.data);
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+
+  let html = '';
+  // Image for PNG
+  if (isPng && item.pngBytes) {
+    const src = URL.createObjectURL(new Blob([item.pngBytes], { type: 'image/png' }));
+    html += `<div class="frame" style="margin-bottom:16px;"><img src="${src}" alt="preview" style="display:block;width:100%;" /></div>`;
+  }
+  html += `<div class="meta-card"><h3>文件属性</h3>
+    <div class="meta-row"><span class="k">路径</span><span class="v" style="text-align:right;word-break:break-all;max-width:60%;">${escapeHtml(node.path)}</span></div>
+    <div class="meta-row"><span class="k">类型</span><span class="v">${isPng ? 'PNG (tEXt chara)' : 'JSON'}</span></div>
+    <div class="meta-row"><span class="k">大小</span><span class="v">${sizeKb} KB</span></div>
+    <div class="meta-row"><span class="k">角色名</span><span class="v">${escapeHtml(charName)}</span></div>
+    <div class="meta-row"><span class="k">规范</span><span class="v">${escapeHtml(spec)}</span></div>
+    <div class="meta-row"><span class="k">水印</span><span class="v">${
+      hasErr ? '<span class="badge err">chara 缺失</span>'
+      : hasWm ? '<span class="badge ok">rp-hub ✓</span>'
+      : '<span class="badge warn">未设置</span>'}</span></div>`;
+  if (tags.length) {
+    html += `<div class="meta-row" style="display:block"><span class="k" style="display:block;margin-bottom:6px;">标签</span>
+      <span class="v" style="display:flex;flex-wrap:wrap;gap:4px;">${tags.map(t => `<span class="badge muted" style="background:var(--bg-3);color:var(--ink-2);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">${escapeHtml(String(t))}</span>`).join(' ')}</span></div>`;
+  }
+  html += `</div>`;
+
+  if (isPng) {
+    html += `<div class="meta-card" style="border-style:dashed;"><h3>PNG 操作</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn png-btn" id="prop-export-json" style="justify-content:flex-start;">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          导出 JSON 文件
+        </button>
+        <button class="btn png-btn" id="prop-import-json" style="justify-content:flex-start;">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          导入 JSON 覆盖
+        </button>
+      </div></div>`;
+  }
+
+  $('#prop-title').textContent = `${isPng ? 'PNG' : 'JSON'} 属性 — ${escapeHtml(node.name)}`;
+  $('#prop-body').innerHTML = html;
+  $('#properties-modal').classList.add('show');
+
+  // Bind png action buttons inside properties modal
+  const exportBtn = $('#prop-export-json');
+  if (exportBtn) exportBtn.addEventListener('click', () => { closePropertiesModal(); exportPngJson(); });
+  const importBtn = $('#prop-import-json');
+  if (importBtn) importBtn.addEventListener('click', () => { closePropertiesModal(); triggerImportJson(); });
+}
+
+function closePropertiesModal() {
+  $('#properties-modal')?.classList.remove('show');
+}
+
+/* ---------------- JSON Editor Modal ---------------- */
+function openJsonEditorModal() {
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  ta.value = state.originalJson;
+  $('#json-edit-modal').classList.add('show');
+  bindJsonEditorModal();
+  ta.setSelectionRange(0, 0);
+  ta.focus();
+  ta.dispatchEvent(new Event('input'));
+}
+
+function closeJsonEditorModal() {
+  $('#json-edit-modal')?.classList.remove('show');
+}
+
+async function saveJsonFromModal() {
+  if (state.saving) return;
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(ta.value);
+  } catch (e) {
+    ta.style.boxShadow = '0 0 0 2px var(--err)';
+    toast('JSON 校验失败: ' + e.message, 'err', 4000);
+    return;
+  }
+  ta.style.boxShadow = '';
+  const item = state.activeFile?.item;
+  if (!item) { toast('没有活动的文件', 'err'); return; }
+  const isPng = item.type === 'png';
+
+  if (isPng) {
+    // For PNG: update in-memory data, close modal, then delegate to savePng()
+    // which has the proven file-write logic
+    item.data = ensureWatermark(parsed);
+    state.originalJson = JSON.stringify(item.data, null, 2);
+    state.dirty = true;
+    closeJsonEditorModal();
+    renderEditor(state.activeFile?.item);
+    await savePng();
+    return;
+  }
+
+  // For JSON: save directly to file
+  state.saving = true;
+  const saveBtn = $('#jem-btn-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中…'; }
+
+  try {
+    const finalText = JSON.stringify(parsed, null, 2);
+    const w = await item.handle.createWritable();
+    await w.write(finalText);
+    await w.close();
+    item.data = parsed;
+    item.hasError = false;
+    item.fileSize = new Blob([finalText]).size;
+    state.originalJson = finalText;
+    state.dirty = false;
+    closeJsonEditorModal();
+    renderEditor(state.activeFile?.item);
+    renderTree();
+    toast('已保存 JSON 文件', 'ok');
+  } catch (err) {
+    console.error(err);
+    toast('保存失败: ' + err.message, 'err');
+  } finally {
+    state.saving = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存';
+    }
+  }
+}
+
+function bindJsonEditorModal() {
+  const ta = $('#jem-textarea');
+  if (!ta) return;
+  const validDot = $('#jem-valid-dot');
+  const validText = $('#jem-valid-text');
+  const wmDot = '#jem-wm-dot';
+  const wmText = '#jem-wm-text';
+  const charCount = $('#jem-char-count');
+  const lineCount = $('#jem-line-count');
+
+  function updateStatus() {
+    ta.style.boxShadow = '';
+    const txt = ta.value;
+    charCount.textContent = `${txt.length.toLocaleString()} 字符`;
+    lineCount.textContent = `${txt.split('\n').length} 行`;
+    let isValid = false;
+    let hasWm = false;
+    try {
+      const parsed = JSON.parse(txt);
+      isValid = true;
+      validDot.className = 'dot ok';
+      validText.textContent = 'JSON 有效';
+      hasWm = checkWatermark(parsed);
+    } catch (e) {
+      validDot.className = 'dot err';
+      validText.textContent = 'JSON 错误: ' + e.message;
+    }
+    const wmDotEl = $(wmDot), wmTextEl = $(wmText);
+    if (isValid && hasWm) {
+      wmDotEl.className = 'dot ok';
+      wmTextEl.textContent = '水印 ✓';
+    } else if (isValid) {
+      wmDotEl.className = 'dot warn';
+      wmTextEl.textContent = '无水印';
+    } else {
+      wmDotEl.className = 'dot';
+      wmTextEl.textContent = '—';
+    }
+  }
+
+  // Use on* properties to avoid duplicate listeners on repeated open
+  ta.oninput = updateStatus;
+  ta.onkeydown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(en);
+      ta.selectionStart = ta.selectionEnd = s + 2;
+      updateStatus();
+    }
+  };
+
+  $('#jem-btn-format').onclick = () => {
+    try {
+      const obj = JSON.parse(ta.value);
+      ta.value = JSON.stringify(obj, null, 2);
+      updateStatus();
+      toast('已格式化', 'ok', 1200);
+    } catch (e) {
+      toast('JSON 错误，无法格式化', 'err');
+    }
+  };
+
+  $('#jem-btn-revert').onclick = () => {
+    ta.value = state.originalJson;
+    updateStatus();
+    toast('已还原', 'ok', 1200);
+  };
+
+  $('#jem-btn-wm').onclick = () => {
+    try {
+      const data = JSON.parse(ta.value);
+      const root = data.data || data;
+      if (!root.extensions || typeof root.extensions !== 'object') root.extensions = {};
+      root.extensions.rp_hub_watermark = 'rp-hub';
+      if (data.data) data.data = root;
+      ta.value = JSON.stringify(data, null, 2);
+      updateStatus();
+      toast('已添加 rp-hub 水印', 'ok');
+    } catch (e) {
+      toast('JSON 无效，无法添加水印', 'err');
+    }
+  };
+
+  $('#jem-btn-save').onclick = saveJsonFromModal;
+  $('#jem-btn-close').onclick = closeJsonEditorModal;
+
+  updateStatus();
+}
+
+// close modals on overlay click and escape
+document.addEventListener('click', (e) => {
+  const jem = $('#json-edit-modal');
+  if (jem?.classList.contains('show') && e.target === jem) closeJsonEditorModal();
+  const prop = $('#properties-modal');
+  if (prop?.classList.contains('show') && e.target === prop) closePropertiesModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeJsonEditorModal(); closePropertiesModal(); }
+});
+
+$('#prop-btn-close')?.addEventListener('click', closePropertiesModal);
+
+/* ---------------- Field editor (inline editable form) ---------------- */
+function getUiTemplatesArray(data) {
+  if (!data) return null;
+  const root = data.data || data;
+  if (Array.isArray(root.uiTemplates)) return root.uiTemplates;
+  if (Array.isArray(root.ui_templates)) return root.ui_templates;
+  if (Array.isArray(data.uiTemplates)) return data.uiTemplates;
+  if (Array.isArray(data.ui_templates)) return data.ui_templates;
+  const ext = root.extensions || data.extensions;
+  if (ext) {
+    if (Array.isArray(ext.ui_templates)) return ext.ui_templates;
+    if (Array.isArray(ext.rp_hub_ui_templates)) return ext.rp_hub_ui_templates;
+  }
+  return null;
+}
+
+function ensureUiTemplatesArray(data) {
+  let arr = getUiTemplatesArray(data);
+  if (arr) return arr;
+  const root = data.data || data;
+  root.uiTemplates = [];
+  return root.uiTemplates;
+}
+
+const EDITOR_FIELDS = [
+  { key: 'name', label: '名称', type: 'input', cls: 'field-name' },
+  { key: 'description', label: '描述', type: 'textarea', cls: 'tall' },
+  { key: 'personality', label: '性格', type: 'textarea', cls: '' },
+  { key: 'first_mes', label: '开场白', type: 'textarea', cls: 'tall' },
+  { key: 'mes_example', label: '对话示例', type: 'textarea', cls: 'tall' },
+  { key: 'creator_notes', label: '作者备注', type: 'textarea', cls: '' },
+  { key: 'system_prompt', label: '系统提示', type: 'textarea', cls: '' },
+  { key: 'post_history_instructions', label: '历史记录指示', type: 'textarea', cls: '' },
+];
+
+function buildFieldEditorHtml(item) {
+  const data = item.data;
+  if (!data) return '<div class="nope"><h1>∅</h1><p>该文件没有可编辑的角色数据。</p></div>';
+  const root = data.data || data;
+
+  let html = '<div class="field-editor">';
+
+  for (const f of EDITOR_FIELDS) {
+    const val = root[f.key] != null ? String(root[f.key]) : '';
+    if (f.type === 'input') {
+      html += `<div class="field-group"><label class="field-label">${f.label}</label><input class="field-input ${f.cls || ''}" data-field="${f.key}" type="text" value="${escapeHtml(val)}" /></div>`;
+    } else {
+      html += `<div class="field-group"><label class="field-label">${f.label}</label><textarea class="field-textarea ${f.cls || ''}" data-field="${f.key}">${escapeHtml(val)}</textarea></div>`;
+    }
+  }
+
+  // Tags
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+  html += `<div class="field-group"><label class="field-label">标签<span class="field-hint">逗号分隔</span></label><input class="field-input" data-field="tags" type="text" value="${escapeHtml(tags.join(', '))}" /></div>`;
+
+  // Alternate greetings
+  const greetings = Array.isArray(root.alternate_greetings) ? root.alternate_greetings : [];
+  html += `<div class="field-group"><label class="field-label">额外开场白<span class="field-hint">可添加多个</span></label><div class="field-list" id="greetings-list">`;
+  greetings.forEach((g, i) => {
+    html += `<div class="field-list-item"><textarea class="field-textarea" data-field="alternate_greetings" data-index="${i}">${escapeHtml(String(g || ''))}</textarea><button class="btn ghost field-remove" data-remove-greeting="${i}" title="删除">✕</button></div>`;
+  });
+  html += `</div><button class="btn ghost field-add" id="btn-add-greeting">+ 添加开场白</button></div>`;
+
+  // uiTemplates
+  const uiTemplates = getUiTemplatesArray(data) || [];
+  html += `<div class="field-group"><label class="field-label">UI 模板<span class="field-hint">点击展开编辑</span></label><div id="ui-templates-list">`;
+  uiTemplates.forEach((t, i) => {
+    const tName = t.name || t.title || '';
+    const tHtml = t.htmlTemplate || t.template || t.html || t.content || '';
+    const tInit = t.initialVariableState ? JSON.stringify(t.initialVariableState, null, 2) : '';
+    const tSchema = t.variableSchema || '';
+    html += `<div class="field-collapse" data-ui-index="${i}">
+      <div class="field-collapse-head">
+        <span class="field-collapse-title">${escapeHtml(tName) || '未命名模板'}</span>
+        <div class="field-collapse-actions">
+          <span class="field-collapse-arrow">▶</span>
+          <button class="btn ghost field-remove" data-remove-ui="${i}" title="删除">✕</button>
+        </div>
+      </div>
+      <div class="field-collapse-body">
+        <div class="field-group"><label class="field-label">名称</label>
+          <input class="field-input" data-ui-field="name" data-ui-index="${i}" type="text" value="${escapeHtml(tName)}" /></div>
+        <div class="field-group"><label class="field-label">HTML 模板</label>
+          <textarea class="field-textarea tall" data-ui-field="htmlTemplate" data-ui-index="${i}" style="min-height:200px;">${escapeHtml(tHtml)}</textarea></div>
+        <div class="field-group"><label class="field-label">初始变量状态 (JSON)</label>
+          <textarea class="field-textarea tall" data-ui-field="initialVariableState" data-ui-index="${i}">${escapeHtml(tInit)}</textarea></div>
+        <div class="field-group"><label class="field-label">变量 Schema</label>
+          <textarea class="field-textarea tall" data-ui-field="variableSchema" data-ui-index="${i}">${escapeHtml(tSchema)}</textarea></div>
+      </div>
+    </div>`;
+  });
+  html += `</div><button class="btn ghost field-add" id="btn-add-ui">+ 添加 UI 模板</button></div>`;
+
+  html += '</div>';
+  return html;
+}
+
+function markFieldDirty() {
+  state.dirty = true;
+  const item = state.activeFile?.item;
+  if (item?.data) {
+    state.originalJson = JSON.stringify(item.data, null, 2);
+  }
+  window.onbeforeunload = (e) => { e.preventDefault(); e.returnValue = ''; };
+}
+
+function bindFieldEditor(item) {
+  const root = item.data?.data || item.data;
+  if (!root) return;
+
+  // Bind text/textarea fields
+  document.querySelectorAll('[data-field]').forEach(el => {
+    const field = el.dataset.field;
+    if (field === 'alternate_greetings') return; // handled separately
+
+    el.addEventListener('input', () => {
+      if (field === 'tags') {
+        root.tags = el.value.split(',').map(t => t.trim()).filter(Boolean);
+      } else {
+        root[field] = el.value;
+      }
+      markFieldDirty();
+    });
+  });
+
+  // Bind alternate_greetings textareas
+  document.querySelectorAll('[data-field="alternate_greetings"]').forEach(el => {
+    const idx = parseInt(el.dataset.index, 10);
+    el.addEventListener('input', () => {
+      if (Array.isArray(root.alternate_greetings) && idx < root.alternate_greetings.length) {
+        root.alternate_greetings[idx] = el.value;
+        markFieldDirty();
+      }
+    });
+  });
+
+  // Bind remove greeting buttons
+  document.querySelectorAll('[data-remove-greeting]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.removeGreeting, 10);
+      if (Array.isArray(root.alternate_greetings)) {
+        root.alternate_greetings.splice(idx, 1);
+        if (root.alternate_greetings.length === 0) delete root.alternate_greetings;
+        markFieldDirty();
+        renderFieldEditorOnly(item);
+      }
+    });
+  });
+
+  // Bind add greeting button
+  const addBtn = document.getElementById('btn-add-greeting');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      if (!Array.isArray(root.alternate_greetings)) root.alternate_greetings = [];
+      root.alternate_greetings.push('');
+      markFieldDirty();
+      renderFieldEditorOnly(item);
+    });
+  }
+
+  // Bind uiTemplates collapse toggles
+  document.querySelectorAll('.field-collapse-head').forEach(head => {
+    head.addEventListener('click', (e) => {
+      if (e.target.closest('[data-remove-ui]')) return;
+      head.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Bind uiTemplates field edits
+  const uiTemplates = getUiTemplatesArray(item.data);
+  if (uiTemplates) {
+    document.querySelectorAll('[data-ui-field]').forEach(el => {
+      const idx = parseInt(el.dataset.uiIndex, 10);
+      const field = el.dataset.uiField;
+      el.addEventListener('input', () => {
+        if (!uiTemplates[idx]) return;
+        if (field === 'initialVariableState') {
+          try { uiTemplates[idx].initialVariableState = JSON.parse(el.value); }
+          catch (e) { /* invalid JSON, keep old value */ }
+        } else {
+          uiTemplates[idx][field] = el.value;
+        }
+        markFieldDirty();
+        // Update collapse header when name changes
+        if (field === 'name') {
+          const title = el.closest('.field-collapse')?.querySelector('.field-collapse-title');
+          if (title) title.textContent = el.value || '未命名模板';
+        }
+      });
+    });
+
+    // Bind remove uiTemplate buttons
+    document.querySelectorAll('[data-remove-ui]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.removeUi, 10);
+        uiTemplates.splice(idx, 1);
+        markFieldDirty();
+        renderFieldEditorOnly(item);
+      });
+    });
+  }
+
+  // Bind add uiTemplate button
+  const addUiBtn = document.getElementById('btn-add-ui');
+  if (addUiBtn) {
+    addUiBtn.addEventListener('click', () => {
+      const arr = ensureUiTemplatesArray(item.data);
+      arr.push({
+        id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)),
+        name: '新模板',
+        htmlTemplate: '',
+        initialVariableState: {},
+        variableSchema: '',
+      });
+      markFieldDirty();
+      renderFieldEditorOnly(item);
+      // Auto-open the newly added template
+      const last = document.querySelector('.field-collapse:last-child');
+      if (last) last.classList.add('open');
+    });
+  }
+}
+
+// Re-render only the field editor part (preserves header)
+function renderFieldEditorOnly(item) {
+  const container = document.querySelector('.field-editor');
+  if (container) {
+    container.outerHTML = buildFieldEditorHtml(item);
+    bindFieldEditor(item);
+  }
+}
+
+/* ---------------- Workspace character preview HTML builder ---------------- */
+function extractUiTemplates(rawData) {
+  if (!rawData) return [];
+  const content = rawData?.data || rawData || {};
+  const candidates = [
+    content.uiTemplates,
+    content.ui_templates,
+    rawData.uiTemplates,
+    rawData.ui_templates,
+    content.extensions?.ui_templates,
+    content.extensions?.rp_hub_ui_templates,
+    rawData.extensions?.ui_templates,
+    rawData.extensions?.rp_hub_ui_templates,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c) && c.length) return c;
+  }
+  return [];
+}
+
+function buildCharacterPreviewHtml(data) {
+  if (!data) return '<div class="nope"><h1>∅</h1><p>该文件没有可预览的角色数据。</p></div>';
+  const root = data.data || data;
+  const name = root.name || root.char_name || '未命名角色';
+  const desc = root.description || '';
+  const personality = root.personality || '';
+  const firstMes = root.first_mes || '';
+  const mesExample = root.mes_example || '';
+  const creatorNotes = root.creator_notes || '';
+  const systemPrompt = root.system_prompt || '';
+  const postHistoryInstructions = root.post_history_instructions || '';
+  const tags = Array.isArray(root.tags) ? root.tags : [];
+  const uiTemplates = extractUiTemplates(data);
+
+  const decoHead = (label) =>
+    `<div class="pm-deco-head"><span class="pm-line"></span><span class="pm-label">${label}</span><span class="pm-line"></span></div>`;
+
+  let html = `<div class="pm-section" style="margin-bottom:8px;"><h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:24px;color:var(--ink-0);margin:0 0 4px;letter-spacing:-0.01em;">${escapeHtml(name)}</h2></div>`;
+
+  if (desc) html += `<div class="pm-section">${decoHead('描述')}<div class="pm-content">${renderMarkdown(desc)}</div></div>`;
+  if (personality) html += `<div class="pm-section">${decoHead('性格')}<div class="pm-content">${renderMarkdown(personality)}</div></div>`;
+  if (firstMes) html += `<div class="pm-section">${decoHead('开场白')}<div class="pm-content">${renderMarkdown(firstMes)}</div></div>`;
+  if (mesExample) html += `<div class="pm-section">${decoHead('对话示例')}<div class="pm-content">${renderMarkdown(mesExample)}</div></div>`;
+  if (creatorNotes) html += `<div class="pm-creator-notes"><div>${escapeHtml(creatorNotes)}</div></div>`;
+  if (systemPrompt) html += `<div class="pm-section">${decoHead('系统提示')}<div class="pm-content">${renderMarkdown(systemPrompt)}</div></div>`;
+  if (postHistoryInstructions) html += `<div class="pm-section">${decoHead('历史记录指示')}<div class="pm-content">${renderMarkdown(postHistoryInstructions)}</div></div>`;
+
+  if (uiTemplates.length) {
+    let uiHtml = '';
+    for (const t of uiTemplates) {
+      const tName = t.name || t.title || '';
+      const tContent = t.htmlTemplate || t.template || t.html || t.content || t.markup || '';
+      uiHtml += `<div class="pm-ui-template">${tName ? `<div class="pm-ui-name">${escapeHtml(tName)}</div>` : ''}<div class="pm-content">${renderMarkdown(tContent)}</div></div>`;
+    }
+    if (uiHtml) html += `<div class="pm-section">${decoHead('原始模板UI')}${uiHtml}</div>`;
+  }
+
+  if (tags.length) {
+    html += `<div class="pm-section"><span class="pm-label" style="margin-bottom:10px;display:block;">标签</span><div class="pm-tags">${tags.map(t => `<span class="pm-tag">${escapeHtml(String(t))}</span>`).join('')}</div></div>`;
+  }
+
+  if (!desc && !personality && !firstMes && !mesExample && !creatorNotes && !systemPrompt && !postHistoryInstructions && !uiTemplates.length) {
+    html = `<div style="text-align:center;padding:60px 20px;"><div style="font-size:48px;opacity:0.3;margin-bottom:16px;">⊹</div><p style="color:var(--ink-2);">该角色卡没有可供预览的文本内容。<br>点击「编辑json」查看原始数据。</p></div>`;
+  }
+
+  return html;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  const raw = String(text).trim();
+  if (!raw) return '';
+
+  // Escape HTML first for safety (no external sanitizer needed)
+  let lines = raw.split('\n');
+  let html = '';
+  let inUl = false, inOl = false, inBlockquote = false, inCode = false;
+  let codeLines = [];
+
+  const inline = (s) => {
+    let t = escapeHtml(s);
+    // inline code
+    t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // bold
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    // italic
+    t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    t = t.replace(/_([^_]+)_/g, '<em>$1</em>');
+    // links [text](url)
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return t;
+  };
+
+  const closeLists = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+    if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // code block fence
+    if (line.trim().startsWith('```')) {
+      if (!inCode) {
+        closeLists();
+        inCode = true;
+        codeLines = [];
+      } else {
+        html += '<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        inCode = false;
+      }
+      continue;
+    }
+    if (inCode) { codeLines.push(line); continue; }
+
+    // blank line
+    if (line.trim() === '') {
+      closeLists();
+      continue;
+    }
+
+    // headers
+    const hMatch = line.match(/^(#{1,4})\s+(.*)$/);
+    if (hMatch) {
+      closeLists();
+      const level = hMatch[1].length;
+      html += `<h${level}>${inline(hMatch[2])}</h${level}>`;
+      continue;
+    }
+
+    // blockquote
+    if (line.startsWith('>')) {
+      if (!inBlockquote) { closeLists(); html += '<blockquote>'; inBlockquote = true; }
+      html += inline(line.replace(/^>\s?/, '')) + ' ';
+      continue;
+    } else if (inBlockquote) {
+      html += '</blockquote>';
+      inBlockquote = false;
+    }
+
+    // unordered list
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
+      html += '<li>' + inline(line.replace(/^\s*[-*]\s+/, '')) + '</li>';
+      continue;
+    }
+
+    // ordered list
+    if (/^\s*\d+\.\s+/.test(line)) {
+      if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
+      html += '<li>' + inline(line.replace(/^\s*\d+\.\s+/, '')) + '</li>';
+      continue;
+    }
+
+    // normal paragraph line (breaks: true → single newlines become <br>)
+    closeLists();
+    html += '<p>' + inline(line) + '</p>';
+  }
+
+  closeLists();
+  if (inCode) {
+    html += '<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+  }
+
+  return html;
+}
+
+/* ---------------- Context menu ---------------- */
+let contextNode = null;
+
+function showContextMenu(node, event) {
+  const menu = $('#context-menu');
+  contextNode = node;
+  // toggle PNG-only items
+  const isPng = node.type === 'file' && node.fileType === 'png';
+  menu.querySelectorAll('.ctx-png-only').forEach(el => el.classList.toggle('hidden', !isPng));
+  menu.style.left = `${event.clientX}px`;
+  menu.style.top = `${event.clientY}px`;
+  menu.classList.add('show');
+  // adjust if off-screen
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) menu.style.left = `${window.innerWidth - rect.width - 8}px`;
+  if (rect.bottom > window.innerHeight) menu.style.top = `${window.innerHeight - rect.height - 8}px`;
+}
+
+function hideContextMenu() {
+  $('#context-menu')?.classList.remove('show');
+  contextNode = null;
+}
+
+// close on click outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#context-menu')) hideContextMenu();
+});
+
+// context menu actions
+$('#context-menu')?.addEventListener('click', async (e) => {
+  const item = e.target.closest('.context-menu-item');
+  const node = contextNode;
+  if (!item || !node) return;
+  hideContextMenu();
+  const action = item.dataset.action;
+  try {
+    if (action === 'copy') await copyFileNode(node);
+    else if (action === 'rename') await renameFileNode(node);
+    else if (action === 'delete') await deleteFileNode(node);
+    else if (action === 'properties') await showFileProperties(node);
+    else if (action === 'export-json') await contextExportJson(node);
+    else if (action === 'import-json') { contextImportJson(node); }
+  } catch (err) {
+    toast('操作失败: ' + err.message, 'err');
+  }
+});
+
+async function copyFileNode(node) {
+  const handle = node.handle;
+  const parentHandle = node.parentHandle || state.dirHandle;
+  const ext = node.type === 'dir' ? '' : node.name.slice(node.name.lastIndexOf('.'));
+  const baseName = node.type === 'dir' ? node.name : node.name.slice(0, node.name.lastIndexOf('.'));
+  let copyName = `${baseName} 副本${ext}`;
+  let counter = 1;
+  while (true) {
+    try {
+      if (node.type === 'dir') { await parentHandle.getDirectoryHandle(copyName); }
+      else { await parentHandle.getFileHandle(copyName); }
+      counter++; copyName = `${baseName} 副本${counter}${ext}`;
+    } catch (_) { break; }
+  }
+  if (node.type === 'dir') {
+    const newDir = await parentHandle.getDirectoryHandle(copyName, { create: true });
+    await copyDirRecursive(handle, newDir);
+  } else {
+    const file = await handle.getFile();
+    const content = await file.arrayBuffer();
+    const newHandle = await parentHandle.getFileHandle(copyName, { create: true });
+    const w = await newHandle.createWritable();
+    await w.write(content);
+    await w.close();
+  }
+  toast(`已复制为 ${copyName}`, 'ok');
+  await scanAndBuild();
+}
+
+async function copyDirRecursive(srcHandle, destHandle) {
+  for await (const [name, handle] of srcHandle.entries()) {
+    if (handle.kind === 'directory') {
+      const childDest = await destHandle.getDirectoryHandle(name, { create: true });
+      await copyDirRecursive(handle, childDest);
+    } else {
+      const file = await handle.getFile();
+      const content = await file.arrayBuffer();
+      const newFile = await destHandle.getFileHandle(name, { create: true });
+      const w = await newFile.createWritable();
+      await w.write(content);
+      await w.close();
+    }
+  }
+}
+
+async function renameFileNode(node) {
+  const parentHandle = node.parentHandle || state.dirHandle;
+  const oldName = node.name;
+  const newName = prompt('输入新文件名：', oldName);
+  if (!newName || newName === oldName) return;
+  // check if target exists
+  try {
+    if (node.type === 'dir') { await parentHandle.getDirectoryHandle(newName); }
+    else { await parentHandle.getFileHandle(newName); }
+    toast('目标文件已存在', 'warn'); return;
+  } catch (_) {}
+  if (node.type === 'dir') {
+    const newDir = await parentHandle.getDirectoryHandle(newName, { create: true });
+    await copyDirRecursive(node.handle, newDir);
+    await parentHandle.removeEntry(oldName, { recursive: true });
+  } else {
+    const file = await node.handle.getFile();
+    const content = await file.arrayBuffer();
+    const newHandle = await parentHandle.getFileHandle(newName, { create: true });
+    const w = await newHandle.createWritable();
+    await w.write(new Uint8Array(content));
+    await w.close();
+    await parentHandle.removeEntry(oldName);
+  }
+  // if the renamed file was active, clear it
+  if (state.activeFile === node) { state.activeFile = null; state.originalJson = ''; renderEditor(); }
+  toast(`已重命名为 ${newName}`, 'ok');
+  await scanAndBuild();
+}
+
+async function deleteFileNode(node) {
+  if (!confirm(`确定删除「${node.name}」吗？${node.type === 'dir' ? '（将递归删除所有内容）' : ''}`)) return;
+  const parentHandle = node.parentHandle || state.dirHandle;
+  await parentHandle.removeEntry(node.name, node.type === 'dir' ? { recursive: true } : undefined);
+  if (state.activeFile === node) { state.activeFile = null; state.originalJson = ''; renderEditor(); }
+  toast(`已删除 ${node.name}`, 'ok');
+  await scanAndBuild();
+}
+
+/* ---------------- Context menu PNG operations ---------------- */
+async function contextExportJson(node) {
+  if (node !== state.activeFile) {
+    await selectFile(node);
+  }
+  await exportPngJson();
+}
+
+function contextImportJson(node) {
+  if (node !== state.activeFile) {
+    selectFile(node).then(() => triggerImportJson());
+  } else {
+    triggerImportJson();
+  }
+}
+
+async function savePng() {
+  if (state.saving) return;
+  const node = state.activeFile;
+  const item = node.item;
+  let jsonData = item.data;
+  if (!jsonData) {
+    try { jsonData = JSON.parse(state.originalJson); } catch (e) {
+      toast('JSON 数据无效', 'err');
+      return;
+    }
+  }
+  jsonData = ensureWatermark(jsonData);
+  const finalText = JSON.stringify(jsonData, null, 2);
+
+  state.saving = true;
+  const saveBtn = $('#btn-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中…'; }
+
+  try {
+    const payload = encodeBase64Utf8(JSON.stringify(jsonData));
+    const newPng = injectPngTextChunk(item.pngBytes, 'chara', payload);
+    const w = await item.handle.createWritable();
+    // Use Blob for more reliable cross-browser writing
+    await w.write(new Blob([newPng], { type: 'image/png' }));
+    await w.close();
+
+    // Verify the write succeeded by reading back
+    const verifyFile = await item.handle.getFile();
+    const verifyBuf = new Uint8Array(await verifyFile.arrayBuffer());
+    if (verifyBuf.length !== newPng.length) {
+      throw new Error(`写入验证失败：文件大小 ${verifyBuf.length} ≠ 预期 ${newPng.length}`);
+    }
+    const verifyChunks = readPngChunks(verifyBuf);
+    const verifyPayload = findPngCharacterPayload(verifyChunks);
+    if (!verifyPayload) {
+      throw new Error('写入验证失败：PNG 中未找到 chara 数据');
+    }
+    const verifyData = parseCharacterPayload(verifyPayload);
+    if (JSON.stringify(verifyData) !== JSON.stringify(jsonData)) {
+      throw new Error('写入验证失败：数据内容不匹配');
+    }
+
+    item.pngBytes = verifyBuf;
+    item.data = jsonData;
+    item.hasWatermark = checkWatermark(jsonData);
+    item.fileSize = verifyBuf.length;
+
+    state.originalJson = finalText;
+    state.dirty = false;
+
+    toast('已保存到 PNG ✓', 'ok');
+  } catch (err) {
+    console.error('[savePng]', err);
+    toast('保存失败: ' + err.message, 'err', 5000);
+  } finally {
+    state.saving = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存到 PNG';
+    }
+  }
+}
+
+async function saveJson() {
+  if (state.saving) return;
+  const node = state.activeFile;
+  const item = node.item;
+  let jsonData = item.data;
+  if (!jsonData) {
+    try { jsonData = JSON.parse(state.originalJson); } catch (e) {
+      toast('JSON 数据无效', 'err');
+      return;
+    }
+  }
+  const finalText = JSON.stringify(jsonData, null, 2);
+
+  state.saving = true;
+  const saveBtn = $('#btn-save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中…';
+
+  try {
+    const w = await item.handle.createWritable();
+    await w.write(finalText);
+    await w.close();
+    item.data = jsonData;
+    item.hasError = false;
+    item.fileSize = new Blob([finalText]).size;
+    state.originalJson = finalText;
+    state.dirty = false;
+
+    renderTree();
+    toast('已保存 JSON 文件', 'ok');
+  } catch (e) {
+    console.error(e);
+    toast('保存失败: ' + e.message, 'err');
+  } finally {
+    state.saving = false;
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> 保存';
+  }
+}
+
+/* ---------------- PNG-specific: export / import JSON ---------------- */
+async function exportPngJson() {
+  const node = state.activeFile;
+  const item = node.item;
+  if (!item.data) {
+    toast('PNG 中没有可导出的 JSON', 'err');
+    return;
+  }
+  const baseName = item.name.replace(/\.png$/i, '');
+  const outName = baseName + '.json';
+  try {
+    const parentDir = node.parentHandle || state.dirHandle;
+    let existing = null;
+    try { existing = await parentDir.getFileHandle(outName); } catch (_) {}
+    if (existing) {
+      if (!confirm(`已存在 ${outName}，要覆盖吗？`)) {
+        return;
+      }
+    }
+    const fh = await parentDir.getFileHandle(outName, { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(item.data, null, 2));
+    await w.close();
+    toast(`已导出 ${outName}`, 'ok');
+    await scanAndBuild();
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error(e);
+      toast('导出失败: ' + e.message, 'err');
+    }
+  }
+}
+
+async function triggerImportJson() {
+  const node = state.activeFile;
+  if (!node || node.fileType !== 'png') return;
+  const parentDir = node.parentHandle || state.dirHandle;
+  const baseName = node.name.replace(/\.png$/i, '');
+  const outName = baseName + '.json';
+
+  // check if same-named JSON exists in the same directory
+  let autoHandle = null;
+  try { autoHandle = await parentDir.getFileHandle(outName); } catch (_) {}
+
+  if (autoHandle) {
+    if (confirm(`检测到同名 JSON 文件「${outName}」，是否直接导入？\n\n点击「确定」导入同名文件\n点击「取消」手动选择文件`)) {
+      try {
+        const file = await autoHandle.getFile();
+        const text = await file.text();
+        applyImportedJson(text, outName);
+      } catch (e) {
+        toast('读取失败: ' + e.message, 'err');
+      }
+      return;
+    }
+  }
+  // manual pick
+  els.importFile.value = '';
+  els.importFile.click();
+}
+
+function applyImportedJson(text, fileName) {
+  try {
+    const obj = JSON.parse(text);
+    const formatted = JSON.stringify(obj, null, 2);
+    state.originalJson = formatted;
+    state.activeFile.item.data = obj;
+    state.dirty = true;
+    const jem = $('#jem-textarea');
+    if (jem) { jem.value = formatted; jem.dispatchEvent(new Event('input')); }
+    renderEditor(state.activeFile.item);
+    toast('已载入导入文件，请检查后保存', 'warn');
+  } catch (e) {
+    toast('导入失败: ' + e.message, 'err');
+  }
+}
+
+els.importFile.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const node = state.activeFile;
+  if (!node || node.fileType !== 'png') return;
+  try {
+    const text = await file.text();
+    applyImportedJson(text, file.name);
+  } catch (e) {
+    console.error(e);
+    toast('导入失败: ' + e.message, 'err');
+  } finally {
+    els.importFile.value = '';
+  }
+});
+
+/* ---------------- Unsupported browser ---------------- */
+function renderUnsupported() {
+  els.workspace.innerHTML = `
+    <div class="nope">
+      <h1>浏览器不支持</h1>
+      <p>此编辑器使用 <code>File System Access API</code> 直接读写本地文件，需要 <code>Chrome</code> / <code>Edge</code> 等基于 Chromium 的浏览器（桌面版 86+）。</p>
+      <p style="margin-top:14px;font-size:12px;">Firefox / Safari 暂不支持直接保存到本地文件，可改用命令行脚本 <code>node card-marker.js</code>。</p>
+    </div>
+  `;
+}
+
+/* ---------------- PNG tEXt chunk read/write ---------------- */
+const PNG_SIGNATURE = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+function readPngChunks(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const chunks = {};
+  let offset = 8;
+  while (offset + 8 <= bytes.byteLength) {
+    const length = view.getUint32(offset, false);
+    const type = String.fromCharCode(
+      view.getUint8(offset + 4),
+      view.getUint8(offset + 5),
+      view.getUint8(offset + 6),
+      view.getUint8(offset + 7)
+    );
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    if (dataEnd + 4 > bytes.byteLength) break;
+    const data = bytes.slice(dataStart, dataEnd);
+    if (type === 'tEXt') {
+      const i = data.indexOf(0);
+      if (i !== -1) {
+        chunks[textDecode(data.slice(0, i))] = textDecode(data.slice(i + 1));
+      }
+    } else if (type === 'iTXt') {
+      let cursor = 0;
+      while (cursor < data.length && data[cursor] !== 0) cursor += 1;
+      const key = textDecode(data.slice(0, cursor));
+      cursor += 1;
+      if (cursor + 2 <= data.length) {
+        const compressionFlag = data[cursor];
+        cursor += 2;
+        while (cursor < data.length && data[cursor] !== 0) cursor += 1;
+        cursor += 1;
+        while (cursor < data.length && data[cursor] !== 0) cursor += 1;
+        cursor += 1;
+        if (key && cursor < data.length && compressionFlag === 0) {
+          chunks[key] = textDecode(data.slice(cursor));
+        }
+      }
+    }
+    offset += 12 + length;
+  }
+  return chunks;
+}
+
+function findPngCharacterPayload(chunks) {
+  if (chunks.chara) return chunks.chara;
+  if (chunks.ccv3) return chunks.ccv3;
+  return Object.values(chunks).find((v) => {
+    const t = String(v || '').trim();
+    return t.length > 50 && (t.startsWith('{') || t.startsWith('ey'));
+  }) || '';
+}
+
+function parseCharacterPayload(payload) {
+  try { return JSON.parse(decodeBase64Utf8(payload)); }
+  catch (_) { return JSON.parse(String(payload || '')); }
+}
+
+function parsePngCharacterData(buffer) {
+  const chunks = readPngChunks(buffer);
+  const payload = findPngCharacterPayload(chunks);
+  if (!payload) throw new Error('No character data in PNG');
+  return { chunks, payload, data: parseCharacterPayload(payload) };
+}
+
+function encodeBase64Utf8(value) {
+  const bytes = textEncode(String(value ?? ''));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function decodeBase64Utf8(value) {
+  try {
+    const binary = atob(String(value || '').trim());
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return textDecode(bytes);
+  } catch (_) { return String(value || ''); }
+}
+
+function textEncode(s) { return new TextEncoder().encode(s); }
+function textDecode(b) { return new TextDecoder('utf-8').decode(b); }
+
+const crc32Table = new Uint32Array(256);
+for (let i = 0; i < 256; i += 1) {
+  let c = i;
+  for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+  crc32Table[i] = c;
+}
+function crc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i += 1) crc = (crc >>> 8) ^ crc32Table[(crc ^ bytes[i]) & 0xFF];
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function createTextChunk(key, value) {
+  const type = textEncode('tEXt');
+  const keyData = textEncode(key);
+  const valueData = textEncode(value);
+  const chunkData = new Uint8Array(keyData.length + 1 + valueData.length);
+  chunkData.set(keyData, 0);
+  chunkData[keyData.length] = 0;
+  chunkData.set(valueData, keyData.length + 1);
+  const crcInput = new Uint8Array(type.length + chunkData.length);
+  crcInput.set(type, 0);
+  crcInput.set(chunkData, type.length);
+  const fullChunk = new Uint8Array(12 + chunkData.length);
+  const view = new DataView(fullChunk.buffer);
+  view.setUint32(0, chunkData.length, false);
+  fullChunk.set(type, 4);
+  fullChunk.set(chunkData, 8);
+  view.setUint32(8 + chunkData.length, crc32(crcInput), false);
+  return fullChunk;
+}
+
+function injectPngTextChunk(pngBuffer, key, value) {
+  const pngBytes = new Uint8Array(pngBuffer);
+  for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
+    if (pngBytes[i] !== PNG_SIGNATURE[i]) throw new Error('Invalid PNG signature');
+  }
+  const view = new DataView(pngBytes.buffer, pngBytes.byteOffset, pngBytes.byteLength);
+  const textChunk = createTextChunk(key, value);
+  const removeTypes = new Set(['tEXt', 'iTXt', 'zTXt']);
+  const kept = [pngBytes.slice(0, 8)];
+  let offset = 8;
+  while (offset + 8 <= pngBytes.byteLength) {
+    const length = view.getUint32(offset, false);
+    const type = String.fromCharCode(
+      view.getUint8(offset + 4),
+      view.getUint8(offset + 5),
+      view.getUint8(offset + 6),
+      view.getUint8(offset + 7)
+    );
+    const chunkEnd = offset + 12 + length;
+    if (chunkEnd > pngBytes.byteLength) break;
+    if (!removeTypes.has(type)) kept.push(pngBytes.slice(offset, chunkEnd));
+    if (type === 'IHDR') kept.push(textChunk);
+    offset = chunkEnd;
+  }
+  const totalLength = kept.reduce((s, c) => s + c.length, 0);
+  const result = new Uint8Array(totalLength);
+  let pos = 0;
+  for (const c of kept) { result.set(c, pos); pos += c.length; }
+  return result;
+}
+
+/* ---------------- Util ---------------- */
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+/* ---------------- IndexedDB handle persistence ---------------- */
+const DB_NAME = 'card-marker-store';
+const STORE_NAME = 'handles';
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function storeHandle(key, handle) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(handle, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadHandle(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/* ---------------- Boot ---------------- */
+els.pickBtn.addEventListener('click', pickDirectory);
+els.refreshBtn.addEventListener('click', async () => {
+  if (!state.dirHandle) return;
+  els.refreshBtn.disabled = true;
+  // Drop loaded items so they re-read
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      if (n.type === 'file') n.item = null;
+      else walk(n.children);
+    }
+  };
+  if (state.tree) walk(state.tree.children);
+  state.activeFile = null;
+  renderEditor();
+  await scanAndBuild();
+  els.refreshBtn.disabled = false;
+  toast('已刷新', 'ok', 1000);
+});
+els.collapseBtn.addEventListener('click', () => {
+  if (state.expanded.size === 0) {
+    // expand all if currently collapsed
+    if (state.tree) {
+      const walk = (nodes) => {
+        for (const n of nodes) {
+          if (n.type === 'dir') {
+            state.expanded.add(n.path);
+            walk(n.children);
+          }
+        }
+      };
+      walk(state.tree.children);
+    }
+  } else {
+    state.expanded.clear();
+  }
+  renderTree();
+});
+
+if (!SUPPORTS_FSA) {
+  renderUnsupported();
+}
+
+(async () => {
+  if (!SUPPORTS_FSA) return;
+  try {
+    const stored = await loadHandle('dirHandle');
+    if (!stored) return;
+    const permission = await stored.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') return;
+    state.dirHandle = stored;
+    state.dirName = stored.name;
+    els.path.textContent = stored.name;
+    els.path.classList.remove('empty');
+    els.refreshBtn.disabled = false;
+    els.collapseBtn.disabled = false;
+    await scanAndBuild();
+    toast(`已恢复上次目录：${stored.name}`, 'ok');
+  } catch (_) { /* ignore */ }
+})();
+</script>
+</body>
+</html>
